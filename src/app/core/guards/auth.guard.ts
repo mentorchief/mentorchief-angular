@@ -11,15 +11,19 @@ export const authGuard: CanActivateFn = (_, state: RouterStateSnapshot) => {
   const store = inject(Store<AppState>);
   const router = inject(Router);
 
-  return store.select(selectIsAuthenticated).pipe(
+  return store.select(selectAuthUser).pipe(
     take(1),
-    map((isAuthenticated) => {
-      if (isAuthenticated) {
-        return true;
+    map((user) => {
+      if (!user) {
+        return router.createUrlTree([ROUTES.login], {
+          queryParams: { returnUrl: state.url },
+        });
       }
-      return router.createUrlTree([ROUTES.login], {
-        queryParams: { returnUrl: state.url },
-      });
+      // Logged in but not yet registered → force to registration steps
+      if (!user.registered) {
+        return router.createUrlTree([ROUTES.registration.roleInfo]);
+      }
+      return true;
     }),
   );
 };
