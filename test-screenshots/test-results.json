@@ -1,0 +1,63 @@
+[
+  {
+    "test": "1. Home Page",
+    "url": "http://localhost:4200/",
+    "title": "MentorchiefAngular",
+    "rendered": true,
+    "consoleErrors": [],
+    "screenshot": "01-home.png"
+  },
+  {
+    "test": "2. Login Page",
+    "url": "http://localhost:4200/login",
+    "formExists": true,
+    "emailInputExists": true,
+    "passwordInputExists": true,
+    "consoleErrors": [],
+    "screenshot": "02-login.png"
+  },
+  {
+    "test": "3. Login Attempt",
+    "redirectedTo": "http://localhost:4200/dashboard/mentee",
+    "consoleErrors": [],
+    "screenshot": "03-login-after-submit.png"
+  },
+  {
+    "test": "4. Signup Page",
+    "url": "http://localhost:4200/signup",
+    "formExists": true,
+    "consoleErrors": [],
+    "screenshot": "04-signup.png"
+  },
+  {
+    "test": "5. Forgot Password Page",
+    "url": "http://localhost:4200/forgot-password",
+    "formExists": true,
+    "consoleErrors": [],
+    "screenshot": "05-forgot-password.png"
+  },
+  {
+    "test": "6. Verify Email Page",
+    "url": "http://localhost:4200/verify-email",
+    "digitInputCount": 6,
+    "hasSixInputs": true,
+    "consoleErrors": [],
+    "screenshot": "06-verify-email.png"
+  },
+  {
+    "test": "7. Role Info Page",
+    "url": "http://localhost:4200/auth/registeration-steps/role-info",
+    "menteeCardVisible": true,
+    "mentorCardVisible": true,
+    "consoleErrors": [],
+    "screenshot": "07-role-info.png"
+  },
+  {
+    "test": "8. Select Mentee and Next",
+    "navigatedTo": "http://localhost:4200/auth/registeration-steps/personal-info",
+    "expectedUrl": "http://localhost:4200/auth/registeration-steps/personal-info",
+    "success": true,
+    "consoleErrors": [],
+    "screenshot": "08-after-next.png"
+  }
+]

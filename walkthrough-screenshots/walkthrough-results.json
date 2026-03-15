@@ -1,0 +1,338 @@
+[
+  {
+    "step": 1,
+    "name": "home",
+    "description": "Home page loaded",
+    "url": "http://localhost:4200/",
+    "title": "MentorchiefAngular",
+    "screenshot": "01-home.png",
+    "consoleMessages": [
+      {
+        "type": "debug",
+        "text": "[vite] connecting...",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 488,
+          "columnNumber": 8
+        }
+      },
+      {
+        "type": "log",
+        "text": "Angular is running in development mode.",
+        "location": {
+          "url": "http://localhost:4200/main.js",
+          "lineNumber": 19117,
+          "columnNumber": 12
+        }
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected.",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 611,
+          "columnNumber": 14
+        }
+      }
+    ],
+    "timestamp": "2026-03-12T22:38:53.121Z"
+  },
+  {
+    "step": 2,
+    "name": "login",
+    "description": "Login page loaded",
+    "url": "http://localhost:4200/login",
+    "title": "MentorchiefAngular",
+    "screenshot": "02-login.png",
+    "consoleMessages": [
+      {
+        "type": "debug",
+        "text": "[vite] connecting...",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 488,
+          "columnNumber": 8
+        }
+      },
+      {
+        "type": "log",
+        "text": "Angular is running in development mode.",
+        "location": {
+          "url": "http://localhost:4200/main.js",
+          "lineNumber": 19117,
+          "columnNumber": 12
+        }
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected.",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 611,
+          "columnNumber": 14
+        }
+      }
+    ],
+    "timestamp": "2026-03-12T22:38:54.691Z"
+  },
+  {
+    "step": 3,
+    "name": "login-filled",
+    "description": "Login form filled",
+    "url": "http://localhost:4200/login",
+    "title": "MentorchiefAngular",
+    "screenshot": "03-login-filled.png",
+    "consoleMessages": [],
+    "timestamp": "2026-03-12T22:38:55.345Z"
+  },
+  {
+    "step": 4,
+    "name": "login-result",
+    "description": "After clicking Sign In",
+    "url": "http://localhost:4200/dashboard/mentee",
+    "title": "MentorchiefAngular",
+    "screenshot": "04-login-result.png",
+    "consoleMessages": [],
+    "timestamp": "2026-03-12T22:38:57.439Z"
+  },
+  {
+    "step": 5,
+    "name": "signup",
+    "description": "Signup page loaded",
+    "url": "http://localhost:4200/signup",
+    "title": "MentorchiefAngular",
+    "screenshot": "05-signup.png",
+    "consoleMessages": [
+      {
+        "type": "debug",
+        "text": "[vite] connecting...",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 488,
+          "columnNumber": 8
+        }
+      },
+      {
+        "type": "log",
+        "text": "Angular is running in development mode.",
+        "location": {
+          "url": "http://localhost:4200/main.js",
+          "lineNumber": 19117,
+          "columnNumber": 12
+        }
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected.",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 611,
+          "columnNumber": 14
+        }
+      }
+    ],
+    "timestamp": "2026-03-12T22:38:59.011Z"
+  },
+  {
+    "step": 6,
+    "name": "forgot-password",
+    "description": "Forgot password page loaded",
+    "url": "http://localhost:4200/forgot-password",
+    "title": "MentorchiefAngular",
+    "screenshot": "06-forgot-password.png",
+    "consoleMessages": [
+      {
+        "type": "debug",
+        "text": "[vite] connecting...",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 488,
+          "columnNumber": 8
+        }
+      },
+      {
+        "type": "log",
+        "text": "Angular is running in development mode.",
+        "location": {
+          "url": "http://localhost:4200/main.js",
+          "lineNumber": 19117,
+          "columnNumber": 12
+        }
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected.",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 611,
+          "columnNumber": 14
+        }
+      }
+    ],
+    "timestamp": "2026-03-12T22:39:00.595Z"
+  },
+  {
+    "step": 7,
+    "name": "forgot-password-success",
+    "description": "After clicking Send Reset Link",
+    "url": "http://localhost:4200/forgot-password",
+    "title": "MentorchiefAngular",
+    "screenshot": "07-forgot-password-success.png",
+    "consoleMessages": [],
+    "timestamp": "2026-03-12T22:39:03.198Z"
+  },
+  {
+    "step": 8,
+    "name": "verify-email",
+    "description": "Verify email page loaded",
+    "url": "http://localhost:4200/verify-email",
+    "title": "MentorchiefAngular",
+    "screenshot": "08-verify-email.png",
+    "consoleMessages": [
+      {
+        "type": "debug",
+        "text": "[vite] connecting...",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 488,
+          "columnNumber": 8
+        }
+      },
+      {
+        "type": "log",
+        "text": "Angular is running in development mode.",
+        "location": {
+          "url": "http://localhost:4200/main.js",
+          "lineNumber": 19117,
+          "columnNumber": 12
+        }
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected.",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 611,
+          "columnNumber": 14
+        }
+      }
+    ],
+    "timestamp": "2026-03-12T22:39:04.765Z"
+  },
+  {
+    "step": 9,
+    "name": "verify-email-filled",
+    "description": "Verification code filled",
+    "url": "http://localhost:4200/verify-email",
+    "title": "MentorchiefAngular",
+    "screenshot": "09-verify-email-filled.png",
+    "consoleMessages": [],
+    "timestamp": "2026-03-12T22:39:07.066Z"
+  },
+  {
+    "step": 10,
+    "name": "reset-password",
+    "description": "Reset password page loaded",
+    "url": "http://localhost:4200/reset-password",
+    "title": "MentorchiefAngular",
+    "screenshot": "10-reset-password.png",
+    "consoleMessages": [
+      {
+        "type": "debug",
+        "text": "[vite] connecting...",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 488,
+          "columnNumber": 8
+        }
+      },
+      {
+        "type": "log",
+        "text": "Angular is running in development mode.",
+        "location": {
+          "url": "http://localhost:4200/main.js",
+          "lineNumber": 19117,
+          "columnNumber": 12
+        }
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected.",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 611,
+          "columnNumber": 14
+        }
+      }
+    ],
+    "timestamp": "2026-03-12T22:39:08.651Z"
+  },
+  {
+    "step": 11,
+    "name": "reset-password-filled",
+    "description": "Password fields filled",
+    "url": "http://localhost:4200/reset-password",
+    "title": "MentorchiefAngular",
+    "screenshot": "11-reset-password-filled.png",
+    "consoleMessages": [],
+    "timestamp": "2026-03-12T22:39:09.715Z"
+  },
+  {
+    "step": 12,
+    "name": "role-info",
+    "description": "Role info page loaded",
+    "url": "http://localhost:4200/auth/registeration-steps/role-info",
+    "title": "MentorchiefAngular",
+    "screenshot": "12-role-info.png",
+    "consoleMessages": [
+      {
+        "type": "debug",
+        "text": "[vite] connecting...",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 488,
+          "columnNumber": 8
+        }
+      },
+      {
+        "type": "log",
+        "text": "Angular is running in development mode.",
+        "location": {
+          "url": "http://localhost:4200/main.js",
+          "lineNumber": 19117,
+          "columnNumber": 12
+        }
+      },
+      {
+        "type": "debug",
+        "text": "[vite] connected.",
+        "location": {
+          "url": "http://localhost:4200/@vite/client",
+          "lineNumber": 611,
+          "columnNumber": 14
+        }
+      }
+    ],
+    "timestamp": "2026-03-12T22:39:11.297Z"
+  },
+  {
+    "step": 13,
+    "name": "mentee-selected",
+    "description": "Mentee option selected",
+    "url": "http://localhost:4200/auth/registeration-steps/role-info",
+    "title": "MentorchiefAngular",
+    "screenshot": "13-mentee-selected.png",
+    "consoleMessages": [],
+    "timestamp": "2026-03-12T22:39:12.390Z"
+  },
+  {
+    "step": 14,
+    "name": "personal-info",
+    "description": "Personal info page loaded",
+    "url": "http://localhost:4200/auth/registeration-steps/personal-info",
+    "title": "MentorchiefAngular",
+    "screenshot": "14-personal-info.png",
+    "consoleMessages": [],
+    "timestamp": "2026-03-12T22:39:14.493Z"
+  }
+]

@@ -1,1 +1,123 @@
-/* You can add global styles to this file, and also import other style files */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-size: 16px;
+  --background: #fafafa;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --primary: #3730a3;
+  --primary-foreground: #ffffff;
+  --secondary: #eef0f6;
+  --secondary-foreground: #3730a3;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #eef2ff;
+  --accent-foreground: #312e81;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --border: rgba(55, 48, 163, 0.10);
+  --input: transparent;
+  --input-background: #f5f5f8;
+  --ring: #3730a3;
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  html {
+    font-size: var(--font-size);
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  h1 {
+    @apply text-2xl font-medium leading-tight font-serif;
+  }
+
+  h2 {
+    @apply text-xl font-medium leading-tight font-serif;
+  }
+
+  h3 {
+    @apply text-lg font-medium leading-snug font-serif;
+  }
+
+  h4 {
+    @apply text-base font-medium leading-snug font-serif;
+  }
+
+  label {
+    @apply text-base font-medium leading-relaxed;
+  }
+
+  button {
+    @apply text-base font-medium leading-relaxed;
+  }
+
+  input, select, textarea {
+    @apply text-base font-normal leading-relaxed;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity font-medium;
+  }
+
+  .btn-secondary {
+    @apply px-5 py-2.5 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors font-medium;
+  }
+
+  .btn-outline {
+    @apply px-5 py-2.5 border border-border text-foreground rounded-md hover:bg-muted transition-colors font-medium;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-input-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-primary transition-colors;
+  }
+
+  .card {
+    @apply bg-card border border-border rounded-lg;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium;
+  }
+
+  .badge-primary {
+    @apply bg-primary/10 text-primary;
+  }
+
+  .badge-secondary {
+    @apply bg-secondary text-secondary-foreground;
+  }
+
+  .badge-success {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .badge-warning {
+    @apply bg-amber-100 text-amber-700;
+  }
+
+  .badge-destructive {
+    @apply bg-destructive/10 text-destructive;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
