@@ -1,32 +1,26 @@
 import { Injectable, inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { Store } from '@ngrx/store';
-import { tap, withLatestFrom } from 'rxjs';
+import { from, of } from 'rxjs';
+import { tap, withLatestFrom, switchMap, map, catchError } from 'rxjs';
 import { UserRole } from '../../core/models/user.model';
 import { selectAuthUser } from '../../features/auth/store/auth.selectors';
-import { loadCurrentUserSuccess, loginSuccess, logout, markRegistered, signupSuccess } from '../../features/auth/store/auth.actions';
+import {
+  loadCurrentUserSuccess,
+  loginSuccess,
+  logout,
+  markRegistered,
+  signupSuccess,
+} from '../../features/auth/store/auth.actions';
 import { initializeForRole, resetSession } from './session.actions';
-import {
-  loadMentorData,
-  resetMentor,
-} from '../mentor';
-import {
-  loadMenteeData,
-  resetMentee,
-} from '../mentee';
-import {
-  loadAdminData,
-  resetAdmin,
-} from '../admin';
-import {
-  loadConversations,
-  resetMessaging,
-} from '../messaging';
-import {
-  loadReports,
-  resetReports,
-} from '../reports';
-import { resetUsers } from '../users';
+import { loadMentorData, resetMentor } from '../mentor';
+import { loadMenteeData, resetMentee } from '../mentee';
+import { loadAdminData, resetAdmin } from '../admin';
+import { loadConversations, resetMessaging } from '../messaging';
+import { loadReports, resetReports } from '../reports';
+import { loadUsers } from '../users';
+import { SupabaseService } from '../../core/services/supabase.service';
+import { AuthApiService } from '../../core/services/auth-api.service';
 import { ADMIN_CHATS } from '../../core/data/chats.data';
 import { initialMenteeReports, initialMentorProfileReviews } from '../reports/reports.data';
 import { MENTOR_SEED } from '../mentor/mentor.seed';
@@ -37,6 +31,8 @@ import { ADMIN_SEED } from '../admin/admin.seed';
 export class SessionEffects {
   private readonly actions$ = inject(Actions);
   private readonly store = inject(Store);
+  private readonly supabase = inject(SupabaseService);
+  private readonly authApi = inject(AuthApiService);
 
   readonly initializeOnLogin$ = createEffect(
     () =>
@@ -70,9 +66,7 @@ export class SessionEffects {
         ofType(markRegistered),
         withLatestFrom(this.store.select(selectAuthUser)),
         tap(([, user]) => {
-          if (user) {
-            this.store.dispatch(initializeForRole({ role: user.role }));
-          }
+          if (user) this.store.dispatch(initializeForRole({ role: user.role }));
         }),
       ),
     { dispatch: false },
@@ -94,20 +88,45 @@ export class SessionEffects {
     { dispatch: false },
   );
 
+  /**
+   * On initializeForRole: load all profiles from Supabase into users store,
+   * then load role-specific data. Falls back to seed data if Supabase fails
+   * (e.g. offline / schema not yet applied).
+   */
   readonly initializeForRole$ = createEffect(
     () =>
       this.actions$.pipe(
         ofType(initializeForRole),
-        tap(({ role }) => {
-          this.store.dispatch(loadConversations({
-            conversations: ADMIN_CHATS,
-            mentorUnread: role === UserRole.Mentor ? { 'conv-1': 1, 'conv-2': 2 } : {},
-          }));
-          this.store.dispatch(loadReports({
-            menteeReviews: [],
-            mentorProfileReviews: initialMentorProfileReviews,
-            menteeReports: initialMenteeReports,
-          }));
+        switchMap(({ role }) =>
+          this.authApi.getAllProfiles().pipe(
+            map((profiles) => ({ profiles, role })),
+            catchError(() => of({ profiles: null, role })),
+          ),
+        ),
+        tap(({ profiles, role }) => {
+          // Load users into store (from Supabase or fall back to seed)
+          if (profiles && profiles.length > 0) {
+            this.store.dispatch(loadUsers({ users: profiles }));
+          }
+
+          // Load conversations (still seeded — will be replaced in messaging phase)
+          this.store.dispatch(
+            loadConversations({
+              conversations: ADMIN_CHATS,
+              mentorUnread: role === UserRole.Mentor ? { 'conv-1': 1, 'conv-2': 2 } : {},
+            }),
+          );
+
+          // Load reports (still seeded — will be replaced in reports phase)
+          this.store.dispatch(
+            loadReports({
+              menteeReviews: [],
+              mentorProfileReviews: initialMentorProfileReviews,
+              menteeReports: initialMenteeReports,
+            }),
+          );
+
+          // Load role-specific data (still seeded — will be replaced per-phase)
           if (role === UserRole.Mentor) {
             this.store.dispatch(loadMentorData(MENTOR_SEED));
           } else {

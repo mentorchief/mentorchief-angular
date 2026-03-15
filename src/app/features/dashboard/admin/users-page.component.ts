@@ -62,19 +62,6 @@ const PAGE_SIZE = 10;
               />
             </div>
             <div>
-              <label for="add-password" class="block text-sm font-medium text-foreground mb-1">Password</label>
-              <input
-                id="add-password"
-                type="password"
-                [(ngModel)]="addUserForm.password"
-                name="password"
-                required
-                minlength="8"
-                class="w-full px-4 py-2 bg-input-background border border-border rounded-md"
-                placeholder="Min. 8 characters"
-              />
-            </div>
-            <div>
               <label for="add-role" class="block text-sm font-medium text-foreground mb-1">Role</label>
               <select
                 id="add-role"
@@ -251,7 +238,6 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
   addUserForm = {
     name: '',
     email: '',
-    password: '',
     role: UserRole.Mentee,
     phone: '',
   };
@@ -342,7 +328,7 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
   onOpenAddUser(): void {
     this.showAddUserForm = true;
     this.addUserError = '';
-    this.addUserForm = { name: '', email: '', password: '', role: UserRole.Mentee, phone: '' };
+    this.addUserForm = { name: '', email: '', role: UserRole.Mentee, phone: '' };
     this.cdr.markForCheck();
   }
 
@@ -354,16 +340,11 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
 
   onSubmitAddUser(): void {
     this.addUserError = '';
-    const { name, email, password, role, phone } = this.addUserForm;
+    const { name, email, role, phone } = this.addUserForm;
     const nameTrim = name?.trim() ?? '';
     const emailTrim = email?.trim() ?? '';
-    if (!nameTrim || !emailTrim || !password) {
-      this.addUserError = 'Name, email and password are required.';
-      this.cdr.markForCheck();
-      return;
-    }
-    if (password.length < 8) {
-      this.addUserError = 'Password must be at least 8 characters.';
+    if (!nameTrim || !emailTrim) {
+      this.addUserError = 'Name and email are required.';
       this.cdr.markForCheck();
       return;
     }
@@ -377,7 +358,6 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
       id: `u${Date.now()}`,
       name: nameTrim,
       email: emailTrim,
-      password,
       role,
       avatar: '',
       status: 'active',
@@ -387,7 +367,7 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
     };
     this.store.dispatch(addUser({ user: newUser }));
     this.showAddUserForm = false;
-    this.addUserForm = { name: '', email: '', password: '', role: UserRole.Mentee, phone: '' };
+    this.addUserForm = { name: '', email: '', role: UserRole.Mentee, phone: '' };
     this.toast.success(`${nameTrim} has been added.`);
     this.cdr.markForCheck();
   }
