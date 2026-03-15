@@ -14,6 +14,7 @@ import {
 import { selectIsAuthenticated, selectAuthUser } from '../../features/auth/store/auth.selectors';
 import type { RegistrationData } from '../models/registration.model';
 import type { User } from '../models/user.model';
+import { ROUTES } from '../routes';
 
 interface StepInfo {
   number: number;
@@ -31,7 +32,7 @@ interface StepInfo {
       <header class="sticky top-0 z-50 bg-card/80 backdrop-blur-lg border-b border-border">
         <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div class="flex items-center justify-between">
-            <a routerLink="/" class="flex items-center gap-2.5 no-underline">
+            <a [routerLink]="ROUTES.home" class="flex items-center gap-2.5 no-underline">
               <div class="w-9 h-9 bg-primary rounded-md flex items-center justify-center">
                 <span class="text-primary-foreground font-bold text-sm">M</span>
               </div>
@@ -100,10 +101,12 @@ export class RegistrationLayoutComponent implements OnInit {
 
     this.isAuthenticated$.pipe(take(1)).subscribe((isAuth) => {
       if (!isAuth) {
-        void this.router.navigate(['/signup']);
+        void this.router.navigate([ROUTES.signup]);
       }
     });
   }
+
+  readonly ROUTES = ROUTES;
 
   getInitials(name: string): string {
     return name

@@ -21,6 +21,7 @@ import { BrowseMentorsPageComponent } from './features/public/smart/browse-mento
 import { MentorProfilePageComponent } from './features/public/smart/mentor-profile-page.component';
 import { MentorReviewsPageComponent } from './features/public/smart/mentor-reviews-page.component';
 import { authGuard, registrationGuard, roleGuard, mentorApprovalGuard, guestGuard } from './core/guards/auth.guard';
+import { UserRole } from './core/models/user.model';
 
 // Mentee dashboard pages
 import { MyMentorsPageComponent } from './features/dashboard/mentee/my-mentors-page.component';
@@ -32,6 +33,7 @@ import { MenteeSettingsPageComponent } from './features/dashboard/mentee/setting
 // Mentor dashboard pages
 import { MyMenteesPageComponent } from './features/dashboard/mentor/my-mentees-page.component';
 import { MentorReportFormPageComponent } from './features/dashboard/mentor/report-form-page.component';
+import { MentorReportViewPageComponent } from './features/dashboard/mentor/report-view-page.component';
 import { MentorMessagesPageComponent } from './features/dashboard/mentor/messages-page.component';
 import { MentorEarningsPageComponent } from './features/dashboard/mentor/earnings-page.component';
 import { MentorReportsPageComponent } from './features/dashboard/mentor/reports-page.component';
@@ -70,7 +72,7 @@ export const routes: Routes = [
       {
         path: 'mentor/:id/request',
         component: MentorProfilePageComponent,
-        canActivate: [authGuard, roleGuard(['mentee'])],
+        canActivate: [authGuard, roleGuard([UserRole.Mentee])],
       },
       { path: 'mentor/:id/reviews', component: MentorReviewsPageComponent },
       { path: 'mentor/:id', component: MentorProfilePageComponent },
@@ -99,7 +101,7 @@ export const routes: Routes = [
   {
     path: 'dashboard/mentee',
     component: DashboardLayoutComponent,
-    canActivate: [authGuard, roleGuard(['mentee'])],
+    canActivate: [authGuard, roleGuard([UserRole.Mentee])],
     children: [
       { path: '', pathMatch: 'full', component: MenteeDashboardComponent },
       { path: 'my-mentors', component: MyMentorsPageComponent },
@@ -112,13 +114,14 @@ export const routes: Routes = [
   {
     path: 'dashboard/mentor',
     component: DashboardLayoutComponent,
-    canActivate: [authGuard, roleGuard(['mentor']), mentorApprovalGuard],
+    canActivate: [authGuard, roleGuard([UserRole.Mentor]), mentorApprovalGuard],
     children: [
       { path: 'pending', component: MentorApplicationPendingComponent },
       { path: 'rejected', component: MentorApplicationRejectedComponent },
       { path: '', pathMatch: 'full', component: MentorDashboardComponent },
       { path: 'my-mentees', component: MyMenteesPageComponent },
       { path: 'report/:menteeId', component: MentorReportFormPageComponent },
+      { path: 'report-view/:reportId', component: MentorReportViewPageComponent },
       { path: 'messages', component: MentorMessagesPageComponent },
       { path: 'earnings', component: MentorEarningsPageComponent },
       { path: 'reports', component: MentorReportsPageComponent },
@@ -128,7 +131,7 @@ export const routes: Routes = [
   {
     path: 'dashboard/admin',
     component: DashboardLayoutComponent,
-    canActivate: [authGuard, roleGuard(['admin'])],
+    canActivate: [authGuard, roleGuard([UserRole.Admin])],
     children: [
       { path: '', pathMatch: 'full', component: AdminDashboardComponent },
       { path: 'mentor-applications', component: AdminMentorApplicationsPageComponent },

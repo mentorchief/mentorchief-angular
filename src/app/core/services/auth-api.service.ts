@@ -3,16 +3,16 @@ import { Store } from '@ngrx/store';
 import { Observable, of, throwError } from 'rxjs';
 import { delay, map, switchMap, take } from 'rxjs/operators';
 import type { LoginPayload, SignupPayload } from '../models/auth.model';
-import type { User } from '../models/user.model';
+import { MentorApprovalStatus, UserRole, type User } from '../models/user.model';
 import type { AppState } from '../../store/app.state';
-import { selectPlatformUsers } from '../../features/dashboard/store/dashboard.selectors';
-import { addUser, setMentorApprovalStatus, updateUserProfile } from '../../features/dashboard/store/dashboard.actions';
+import { selectPlatformUsers } from '../../store/users/users.selectors';
+import { addUser, setMentorApprovalStatus, updateUserProfile } from '../../store/users/users.actions';
 
-const SESSION_KEY = 'mentorchief_user';
+const SESSION_KEY = 'mentorchief_userId';
 
 /**
- * Auth API (mock). Reads and updates the single platform user list in the store.
- * No local user array – store is the only source of truth.
+ * Auth API (mock). Single source of truth: users slice.
+ * Session stores only userId — no user data duplication.
  */
 @Injectable({
   providedIn: 'root',
@@ -22,12 +22,12 @@ export class AuthApiService {
 
   login(payload: LoginPayload): Observable<User> {
     const { email, password } = payload;
-    return this.store.select(selectPlatformUsers).pipe(
+    return (this.store.select(selectPlatformUsers) as Observable<User[]>).pipe(
       take(1),
       delay(600),
-      switchMap((users) => {
+      switchMap((users: User[]) => {
         const found = users.find(
-          (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password,
+          (u: User) => u.email.toLowerCase() === email.toLowerCase() && u.password === password,
         );
         if (!found) {
           return throwError(
@@ -37,19 +37,18 @@ export class AuthApiService {
               ),
           );
         }
-        const user: User = { ...found };
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
-        return of(user);
+        sessionStorage.setItem(SESSION_KEY, found.id);
+        return of(found);
       }),
     );
   }
 
   signup(payload: SignupPayload): Observable<User> {
     const { name, email, password, role } = payload;
-    return this.store.select(selectPlatformUsers).pipe(
+    return (this.store.select(selectPlatformUsers) as Observable<User[]>).pipe(
       take(1),
-      switchMap((users) => {
-        const exists = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+      switchMap((users: User[]) => {
+        const exists = users.find((u: User) => u.email.toLowerCase() === email.toLowerCase());
         if (exists) {
           return throwError(() => new Error('An account with this email already exists.')).pipe(
             delay(600),
@@ -70,32 +69,26 @@ export class AuthApiService {
           registered: false,
           status: 'active',
           joinDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          ...(role === 'mentor' ? { mentorApprovalStatus: 'pending' as const } : {}),
+          ...(role === UserRole.Mentor ? { mentorApprovalStatus: MentorApprovalStatus.Pending } : {}),
         };
         this.store.dispatch(addUser({ user: newUser }));
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify(newUser));
+        sessionStorage.setItem(SESSION_KEY, newUser.id);
         return of(newUser).pipe(delay(600));
       }),
     );
   }
 
-  loadCurrentUser(): Observable<User | null> {
+  loadCurrentUser(): Observable<string | null> {
     try {
-      const stored = sessionStorage.getItem(SESSION_KEY);
-      if (!stored) {
+      const userId = sessionStorage.getItem(SESSION_KEY);
+      if (!userId) {
         return of(null);
       }
-      const sessionUser = JSON.parse(stored) as User;
-      return this.store.select(selectPlatformUsers).pipe(
+      return (this.store.select(selectPlatformUsers) as Observable<User[]>).pipe(
         take(1),
-        map((users) => {
-          const fromStore = users.find((u) => u.id === sessionUser.id);
-          if (fromStore) {
-            const merged = { ...fromStore, ...sessionUser };
-            sessionStorage.setItem(SESSION_KEY, JSON.stringify(merged));
-            return merged;
-          }
-          return sessionUser;
+        map((users: User[]) => {
+          const exists = users.some((u: User) => u.id === userId);
+          return exists ? userId : null;
         }),
       );
     } catch {
@@ -105,15 +98,18 @@ export class AuthApiService {
 
   updateProfile(updates: Partial<User>): Observable<User | null> {
     try {
-      const stored = sessionStorage.getItem(SESSION_KEY);
-      if (!stored) {
+      const userId = sessionStorage.getItem(SESSION_KEY);
+      if (!userId) {
         return of(null);
       }
-      const current = JSON.parse(stored) as User;
-      this.store.dispatch(updateUserProfile({ userId: current.id, updates }));
-      const updated: User = { ...current, ...updates };
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(updated));
-      return of(updated);
+      this.store.dispatch(updateUserProfile({ userId, updates }));
+      return (this.store.select(selectPlatformUsers) as Observable<User[]>).pipe(
+        take(1),
+        map((users: User[]) => {
+          const u = users.find((x: User) => x.id === userId);
+          return u ? { ...u, ...updates } : null;
+        }),
+      );
     } catch {
       return of(null);
     }
@@ -132,43 +128,29 @@ export class AuthApiService {
   }
 
   getPendingMentors(): Observable<User[]> {
-    return this.store.select(selectPlatformUsers).pipe(
+    return (this.store.select(selectPlatformUsers) as Observable<User[]>).pipe(
       take(1),
-      map((users) =>
-        users.filter((u) => u.role === 'mentor' && u.mentorApprovalStatus === 'pending'),
+      map((users: User[]) =>
+        users.filter((u: User) => u.role === UserRole.Mentor && u.mentorApprovalStatus === MentorApprovalStatus.Pending),
       ),
       delay(300),
     );
   }
 
   approveMentor(userId: string): Observable<User | null> {
-    return this.store.select(selectPlatformUsers).pipe(
+    return (this.store.select(selectPlatformUsers) as Observable<User[]>).pipe(
       take(1),
-      switchMap((users) => {
-        const user = users.find((u) => u.id === userId);
-        if (!user || user.role !== 'mentor') {
+      switchMap((users: User[]) => {
+        const user = users.find((u: User) => u.id === userId);
+        if (!user || user.role !== UserRole.Mentor) {
           return of(null).pipe(delay(300));
         }
         this.store.dispatch(
-          setMentorApprovalStatus({ userId, mentorApprovalStatus: 'approved' }),
+          setMentorApprovalStatus({ userId, mentorApprovalStatus: MentorApprovalStatus.Approved }),
         );
-        try {
-          const stored = sessionStorage.getItem(SESSION_KEY);
-          if (stored) {
-            const current = JSON.parse(stored) as User;
-            if (current.id === userId) {
-              sessionStorage.setItem(
-                SESSION_KEY,
-                JSON.stringify({ ...current, mentorApprovalStatus: 'approved' }),
-              );
-            }
-          }
-        } catch {
-          // ignore
-        }
-        return this.store.select(selectPlatformUsers).pipe(
+        return (this.store.select(selectPlatformUsers) as Observable<User[]>).pipe(
           take(1),
-          map((list) => list.find((u) => u.id === userId) ?? null),
+          map((list: User[]) => list.find((u: User) => u.id === userId) ?? null),
           delay(300),
         );
       }),
@@ -176,33 +158,19 @@ export class AuthApiService {
   }
 
   rejectMentor(userId: string): Observable<User | null> {
-    return this.store.select(selectPlatformUsers).pipe(
+    return (this.store.select(selectPlatformUsers) as Observable<User[]>).pipe(
       take(1),
-      switchMap((users) => {
-        const user = users.find((u) => u.id === userId);
-        if (!user || user.role !== 'mentor') {
+      switchMap((users: User[]) => {
+        const user = users.find((u: User) => u.id === userId);
+        if (!user || user.role !== UserRole.Mentor) {
           return of(null).pipe(delay(300));
         }
         this.store.dispatch(
-          setMentorApprovalStatus({ userId, mentorApprovalStatus: 'rejected' }),
+          setMentorApprovalStatus({ userId, mentorApprovalStatus: MentorApprovalStatus.Rejected }),
         );
-        try {
-          const stored = sessionStorage.getItem(SESSION_KEY);
-          if (stored) {
-            const current = JSON.parse(stored) as User;
-            if (current.id === userId) {
-              sessionStorage.setItem(
-                SESSION_KEY,
-                JSON.stringify({ ...current, mentorApprovalStatus: 'rejected' }),
-              );
-            }
-          }
-        } catch {
-          // ignore
-        }
-        return this.store.select(selectPlatformUsers).pipe(
+        return (this.store.select(selectPlatformUsers) as Observable<User[]>).pipe(
           take(1),
-          map((list) => list.find((u) => u.id === userId) ?? null),
+          map((list: User[]) => list.find((u: User) => u.id === userId) ?? null),
           delay(300),
         );
       }),

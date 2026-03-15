@@ -1,3 +1,4 @@
+import type { ChatConversation } from './chat.model';
 import type { User } from './user.model';
 
 /** Mentee dashboard */
@@ -40,12 +41,10 @@ export interface MenteeDashboardState {
 
 /** Mentor dashboard */
 
+/** Domain data only. Icon/colors from display.constants. */
 export interface MentorStat {
   label: string;
   value: string;
-  icon: [string, string];
-  bgColor: string;
-  textColor: string;
 }
 
 export interface PendingMentorshipRequest {
@@ -71,21 +70,37 @@ export interface MentorEarning {
   mentees: number;
 }
 
+export interface MentorPayoutAccount {
+  type: 'bank' | 'instapay';
+  bankName?: string;
+  accountNumber?: string;
+  instapayNumber?: string;
+}
+
+export interface MentorNotificationSetting {
+  id: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+}
+
 export interface MentorDashboardState {
   stats: MentorStat[];
   pendingRequests: PendingMentorshipRequest[];
   activeMentees: ActiveMenteeSummary[];
   earnings: MentorEarning[];
+  payoutAccount: MentorPayoutAccount;
+  acceptingNewMentees: boolean;
+  notificationSettings: MentorNotificationSetting[];
 }
 
 /** Admin dashboard */
 
+/** Domain data only. Icon/color from display.constants. */
 export interface AdminStat {
   label: string;
   value: string;
   change: string;
-  icon: [string, string];
-  color: string;
 }
 
 export interface PendingAction {
@@ -121,10 +136,10 @@ export interface RevenueBar {
   value: number;
 }
 
+/** Domain data only. Color from display.constants. */
 export interface UserGrowthBar {
   label: string;
   count: number;
-  color: string;
 }
 
 export interface TopMentorRow {
@@ -133,10 +148,9 @@ export interface TopMentorRow {
   earnings: number;
 }
 
+/** Domain data only. Icon/iconBg from display.constants. */
 export interface ReportActivityItem {
   id: number;
-  icon: [string, string];
-  iconBg: string;
   text: string;
   time: string;
 }
@@ -262,4 +276,10 @@ export interface DashboardState {
   mentorProfileReviews: MentorProfileReview[];
   /** Platform config for marketing/public pages (sample price, satisfaction, etc.). */
   platformConfig: { samplePrice: number; satisfactionRate: number; countries: number; defaultCardExpiry?: string; avgSessionRating?: string };
+  /** All platform conversations (mentor-mentee chats). Managed by NgRx. */
+  conversations: ChatConversation[];
+  /** Currently selected conversation id (for messages UI). */
+  selectedConversationId: string | null;
+  /** Unread message count per conversation for mentor (key = conversationId). */
+  mentorUnreadByConversation: Record<string, number>;
 }

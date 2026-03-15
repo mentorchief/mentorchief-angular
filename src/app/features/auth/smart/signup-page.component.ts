@@ -13,6 +13,8 @@ import {
 import { signup } from '../store/auth.actions';
 import type { SignupFormValue } from '../ui/signup-form.component';
 import { SignupFormComponent } from '../ui/signup-form.component';
+import { MentorApprovalStatus, UserRole } from '../../../core/models/user.model';
+import { ROUTES } from '../../../core/routes';
 
 @Component({
   selector: 'mc-signup-page',
@@ -63,7 +65,7 @@ export class SignupPageComponent implements OnInit {
         this.user$.pipe(take(1)).subscribe((user) => {
           if (user) {
             if (!user.registered) {
-              void this.router.navigate(['/auth/registration-steps/role-info']);
+              void this.router.navigate([ROUTES.registration.roleInfo]);
             } else {
               this.redirectToDashboard(user);
             }
@@ -84,22 +86,22 @@ export class SignupPageComponent implements OnInit {
           name: value.name.trim(),
           email: value.email.trim(),
           password: value.password,
-          role: 'mentee',
+          role: UserRole.Mentee,
         },
       }),
     );
   }
 
-  private redirectToDashboard(user: { role: string; mentorApprovalStatus?: string }): void {
-    if (user.role === 'admin') {
-      void this.router.navigate(['/dashboard/admin']);
-    } else if (user.role === 'mentor') {
-      const status = user.mentorApprovalStatus ?? 'approved';
-      if (status === 'pending') void this.router.navigate(['/dashboard/mentor/pending']);
-      else if (status === 'rejected') void this.router.navigate(['/dashboard/mentor/rejected']);
-      else void this.router.navigate(['/dashboard/mentor']);
+  private redirectToDashboard(user: { role: UserRole; mentorApprovalStatus?: MentorApprovalStatus }): void {
+    if (user.role === UserRole.Admin) {
+      void this.router.navigate([ROUTES.admin.dashboard]);
+    } else if (user.role === UserRole.Mentor) {
+      const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
+      if (status === MentorApprovalStatus.Pending) void this.router.navigate([ROUTES.mentor.pending]);
+      else if (status === MentorApprovalStatus.Rejected) void this.router.navigate([ROUTES.mentor.rejected]);
+      else void this.router.navigate([ROUTES.mentor.dashboard]);
     } else {
-      void this.router.navigate(['/dashboard/mentee']);
+      void this.router.navigate([ROUTES.mentee.dashboard]);
     }
   }
 }

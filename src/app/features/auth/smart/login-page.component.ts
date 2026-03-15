@@ -13,6 +13,8 @@ import {
 import { login } from '../store/auth.actions';
 import type { LoginFormValue } from '../ui/login-form.component';
 import { LoginFormComponent } from '../ui/login-form.component';
+import { MentorApprovalStatus, UserRole } from '../../../core/models/user.model';
+import { ROUTES } from '../../../core/routes';
 
 @Component({
   selector: 'mc-login-page',
@@ -74,16 +76,16 @@ export class LoginPageComponent implements OnInit {
     );
   }
 
-  private redirectToDashboard(user: { role: string; mentorApprovalStatus?: string }): void {
-    if (user.role === 'admin') {
-      void this.router.navigate(['/dashboard/admin']);
-    } else if (user.role === 'mentor') {
-      const status = user.mentorApprovalStatus ?? 'approved';
-      if (status === 'pending') void this.router.navigate(['/dashboard/mentor/pending']);
-      else if (status === 'rejected') void this.router.navigate(['/dashboard/mentor/rejected']);
-      else void this.router.navigate(['/dashboard/mentor']);
+  private redirectToDashboard(user: { role: UserRole; mentorApprovalStatus?: MentorApprovalStatus }): void {
+    if (user.role === UserRole.Admin) {
+      void this.router.navigate([ROUTES.admin.dashboard]);
+    } else if (user.role === UserRole.Mentor) {
+      const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
+      if (status === MentorApprovalStatus.Pending) void this.router.navigate([ROUTES.mentor.pending]);
+      else if (status === MentorApprovalStatus.Rejected) void this.router.navigate([ROUTES.mentor.rejected]);
+      else void this.router.navigate([ROUTES.mentor.dashboard]);
     } else {
-      void this.router.navigate(['/dashboard/mentee']);
+      void this.router.navigate([ROUTES.mentee.dashboard]);
     }
   }
 }

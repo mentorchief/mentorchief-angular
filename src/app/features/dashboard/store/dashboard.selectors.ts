@@ -1,9 +1,9 @@
-import { createFeatureSelector, createSelector } from '@ngrx/store';
+import { createSelector } from '@ngrx/store';
+import type { ChatConversation, ConversationListItem } from '../../../core/models/chat.model';
 import type {
-  DashboardState,
   PastMentorSummary,
+  PendingMentorshipRequest,
   MentorReview,
-  MentorProfileReview,
   MenteeReport,
   MenteePayment,
   MentorEarning,
@@ -14,26 +14,74 @@ import type {
   UserGrowthBar,
 } from '../../../core/models/dashboard.model';
 import { DEFAULT_AVG_RATING } from '../../../core/constants';
+import { ADMIN_STAT_DISPLAY, MENTOR_STAT_DISPLAY, REPORT_ACTIVITY_DISPLAY, USER_GROWTH_COLORS } from '../../../core/constants/display.constants';
+import { MentorApprovalStatus, ROLE_DISPLAY_LABELS, UserRole, type User } from '../../../core/models/user.model';
+import { ROUTES } from '../../../core/routes';
 import { selectAuthUser } from '../../auth/store/auth.selectors';
 
-export const selectDashboardState = createFeatureSelector<DashboardState>('dashboard');
+import { selectActiveMentorship, selectActiveMentorsList, selectMenteePayments, selectMenteeSubscription, selectMyMentors, selectPastMentorsList } from '../../../store/mentee';
+import {
+  selectMentorAcceptingNewMentees,
+  selectMentorActiveMentees,
+  selectMentorEarnings,
+  selectMentorNotificationSettings,
+  selectMentorPayoutAccount,
+  selectMentorPendingRequests,
+  selectMyMentees,
+} from '../../../store/mentor';
+import { selectAdminPayments, selectAdminReports, selectAdminStats, selectAdminPendingActions, selectAdminRecentActivities } from '../../../store/admin';
+import { selectPlatformUsers } from '../../../store/users';
+import { selectPlatformConfig } from '../../../store/platform';
+import { selectMenteeReports, selectMenteeReviews, selectMentorProfileReviews } from '../../../store/reports';
+import {
+  selectAllConversations,
+  selectMentorUnreadByConversation,
+  selectSelectedConversation,
+  selectSelectedConversationId,
+} from '../../../store/messaging';
 
-export const selectMenteeDashboard = createSelector(selectDashboardState, (s) => s.mentee);
-export const selectMentorDashboard = createSelector(selectDashboardState, (s) => s.mentor);
-export const selectAdminDashboard = createSelector(selectDashboardState, (s) => s.admin);
-export const selectMyMentors = createSelector(selectDashboardState, (s) => s.myMentors);
-export const selectMyMentees = createSelector(selectDashboardState, (s) => s.myMentees);
+export const selectMenteeDashboard = createSelector(
+  selectActiveMentorship,
+  selectMenteeSubscription,
+  selectMenteePayments,
+  (activeMentorship, subscription, payments) => ({ activeMentorship, subscription, payments }),
+);
 
-export const selectActiveMentorship = createSelector(selectMenteeDashboard, (d) => d.activeMentorship);
-export const selectMenteeSubscription = createSelector(selectMenteeDashboard, (d) => d.subscription);
-export const selectMenteePayments = createSelector(selectMenteeDashboard, (d) => d.payments);
+export const selectMentorDashboard = createSelector(
+  selectMentorPendingRequests,
+  selectMentorActiveMentees,
+  selectMentorEarnings,
+  selectMentorPayoutAccount,
+  selectMentorAcceptingNewMentees,
+  selectMentorNotificationSettings,
+  selectMyMentees,
+  (pendingRequests, activeMentees, earnings, payoutAccount, acceptingNewMentees, notificationSettings, myMentees) => ({
+    stats: [],
+    pendingRequests,
+    activeMentees,
+    earnings,
+    payoutAccount,
+    acceptingNewMentees,
+    notificationSettings,
+    myMentees,
+  }),
+);
+
+export const selectAdminDashboard = createSelector(
+  selectAdminStats,
+  selectAdminPendingActions,
+  selectAdminRecentActivities,
+  (stats, pendingActions, recentActivities) => ({ stats, pendingActions, recentActivities }),
+);
+
+export { selectMyMentors, selectMyMentees, selectActiveMentorship, selectMenteeSubscription, selectMenteePayments };
 
 /** Mentee payments as display rows (mentor name from activeMentorship; status 'released' → 'completed'). */
 export const selectMenteePaymentsForDisplay = createSelector(
   selectMenteePayments,
   selectActiveMentorship,
   (payments: MenteePayment[], mentorship) => {
-    const mentorName = mentorship?.mentorName ?? 'Mentor';
+    const mentorName = mentorship?.mentorName ?? ROLE_DISPLAY_LABELS[UserRole.Mentor];
     return payments.map((p) => ({
       id: p.id,
       date: p.releaseDate ?? p.month,
@@ -45,7 +93,7 @@ export const selectMenteePaymentsForDisplay = createSelector(
   },
 );
 
-/** True when mentee can cancel subscription within 3 days for full refund (mentor will be informed). */
+/** True when mentee can cancel subscription within 3 days for full refund. */
 export const selectCanCancelSubscriptionForRefund = createSelector(selectMenteeSubscription, (sub) => {
   if (!sub || sub.status !== 'active' || !sub.startedAt) return false;
   const start = new Date(sub.startedAt);
@@ -56,32 +104,46 @@ export const selectCanCancelSubscriptionForRefund = createSelector(selectMenteeS
   return daysSinceStart >= 0 && daysSinceStart <= 3;
 });
 
-export const selectMentorStats = createSelector(selectMentorDashboard, (d) => d.stats);
-export const selectMentorPendingRequests = createSelector(selectMentorDashboard, (d) => d.pendingRequests);
-export const selectMentorActiveMentees = createSelector(selectMentorDashboard, (d) => d.activeMentees);
-export const selectMentorEarnings = createSelector(selectMentorDashboard, (d) => d.earnings);
+export {
+  selectMentorPendingRequests,
+  selectMentorActiveMentees,
+  selectMentorEarnings,
+  selectMentorPayoutAccount,
+  selectMentorAcceptingNewMentees,
+  selectMentorNotificationSettings,
+};
 
-/** Mentor stats derived from store (myMentees, earnings, menteeReviews). Use this in UI so numbers reflect store data. */
-export const selectMentorStatsComputed = createSelector(
+export const selectMentorStats = createSelector(selectMentorDashboard, (d) => d.stats);
+
+/** Mentor stats derived from store (domain only). */
+const selectMentorStatsDomain = createSelector(
   selectMyMentees,
   selectMentorEarnings,
-  selectDashboardState,
-  (mentees, earnings, state): MentorStat[] => {
+  selectMenteeReviews,
+  selectPlatformConfig,
+  (mentees, earnings, reviews, config): MentorStat[] => {
     const active = mentees.filter((m) => m.status === 'active').length;
     const monthly = earnings[0]?.amount ?? 0;
     const totalEarned = earnings.reduce((sum, e) => sum + e.amount, 0);
-    const reviews = state.menteeReviews;
-    const avgRating = reviews.length ? (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length).toFixed(1) : (state.platformConfig?.avgSessionRating ?? DEFAULT_AVG_RATING);
+    const avgRating = reviews.length ? (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length).toFixed(1) : (config?.avgSessionRating ?? DEFAULT_AVG_RATING);
     return [
-      { label: 'Active Mentees', value: String(active), icon: ['fas', 'users'], bgColor: 'bg-blue-50', textColor: 'text-blue-600' },
-      { label: 'Monthly Revenue', value: `$${monthly.toLocaleString()}`, icon: ['fas', 'dollar-sign'], bgColor: 'bg-green-50', textColor: 'text-green-600' },
-      { label: 'Total Earned', value: `$${totalEarned.toLocaleString()}`, icon: ['fas', 'wallet'], bgColor: 'bg-purple-50', textColor: 'text-purple-600' },
-      { label: 'Avg. Rating', value: String(avgRating), icon: ['fas', 'star'], bgColor: 'bg-amber-50', textColor: 'text-amber-600' },
+      { label: 'Active Mentees', value: String(active) },
+      { label: 'Monthly Revenue', value: `$${monthly.toLocaleString()}` },
+      { label: 'Total Earned', value: `$${totalEarned.toLocaleString()}` },
+      { label: 'Avg. Rating', value: String(avgRating) },
     ];
   },
 );
 
-/** Mentor earnings as display rows (id, date, mentee label, amount, status, period). */
+/** Mentor stats with display (icon, colors) from constants. */
+export const selectMentorStatsComputed = createSelector(selectMentorStatsDomain, (stats) =>
+  stats.map((s) => {
+    const display = MENTOR_STAT_DISPLAY[s.label];
+    return { ...s, icon: display?.icon ?? ['fas', 'circle'], bgColor: display?.bgColor ?? 'bg-gray-100', textColor: display?.textColor ?? 'text-gray-600' };
+  }),
+);
+
+/** Mentor earnings as display rows. */
 export const selectMentorEarningsForDisplay = createSelector(selectMentorEarnings, (earnings: MentorEarning[]) =>
   earnings.map((e, i) => ({
     id: String(i + 1),
@@ -93,53 +155,55 @@ export const selectMentorEarningsForDisplay = createSelector(selectMentorEarning
   })),
 );
 
-export const selectAdminStats = createSelector(selectAdminDashboard, (d) => d.stats);
-export const selectAdminPendingActions = createSelector(selectAdminDashboard, (d) => d.pendingActions);
-export const selectAdminRecentActivities = createSelector(selectAdminDashboard, (d) => d.recentActivities);
-/** Single source of truth for all platform users (auth + admin). */
-export const selectPlatformUsers = createSelector(selectDashboardState, (s) => s.platformUsers);
-export const selectAdminPayments = createSelector(selectDashboardState, (s) => s.adminPayments);
+export { selectAdminStats, selectAdminPendingActions, selectAdminRecentActivities, selectPlatformUsers, selectAdminPayments };
 
-/** Admin stats derived from store (platformUsers, adminPayments). Use this in UI so numbers reflect store data. */
-export const selectAdminStatsComputed = createSelector(
+/** Admin stats derived from store (domain only). */
+const selectAdminStatsDomain = createSelector(
   selectPlatformUsers,
   selectAdminPayments,
-  (users, payments): AdminStat[] => {
+  (users: User[], payments): AdminStat[] => {
     const total = users.length;
-    const mentors = users.filter((u) => u.role === 'mentor' && u.mentorApprovalStatus !== 'rejected' && u.status !== 'suspended').length;
-    const mentees = users.filter((u) => u.role === 'mentee' && u.status !== 'suspended').length;
+    const mentors = users.filter((u: User) => u.role === UserRole.Mentor && u.mentorApprovalStatus !== MentorApprovalStatus.Rejected && u.status !== 'suspended').length;
+    const mentees = users.filter((u: User) => u.role === UserRole.Mentee && u.status !== 'suspended').length;
     const revenue = payments.reduce((sum, p) => sum + p.amount, 0);
     const completed = payments.filter((p) => p.status === 'completed').length;
     return [
-      { label: 'Total Users', value: String(total), change: '—', icon: ['fas', 'users'], color: 'text-blue-600' },
-      { label: 'Active Mentors', value: String(mentors), change: '—', icon: ['fas', 'check'], color: 'text-green-600' },
-      { label: 'Active Mentees', value: String(mentees), change: '—', icon: ['fas', 'users'], color: 'text-indigo-600' },
-      { label: 'Monthly Revenue', value: `$${revenue.toLocaleString()}`, change: '—', icon: ['fas', 'dollar-sign'], color: 'text-emerald-600' },
-      { label: 'Active Sessions', value: String(completed), change: '—', icon: ['fas', 'file-lines'], color: 'text-purple-600' },
-      { label: 'Platform Growth', value: `${total} users`, change: '—', icon: ['fas', 'chart-line'], color: 'text-amber-600' },
+      { label: 'Total Users', value: String(total), change: '—' },
+      { label: 'Active Mentors', value: String(mentors), change: '—' },
+      { label: 'Active Mentees', value: String(mentees), change: '—' },
+      { label: 'Monthly Revenue', value: `$${revenue.toLocaleString()}`, change: '—' },
+      { label: 'Active Sessions', value: String(completed), change: '—' },
+      { label: 'Platform Growth', value: `${total} users`, change: '—' },
     ];
   },
+);
+
+/** Admin stats with display (icon, color) from constants. */
+export const selectAdminStatsComputed = createSelector(selectAdminStatsDomain, (stats) =>
+  stats.map((s) => {
+    const display = ADMIN_STAT_DISPLAY[s.label];
+    return { ...s, icon: display?.icon ?? ['fas', 'circle'], color: display?.color ?? 'text-gray-600' };
+  }),
 );
 
 /** Pending actions with counts from store. */
 export const selectAdminPendingActionsComputed = createSelector(
   selectPlatformUsers,
   selectAdminPayments,
-  (users, payments): PendingAction[] => {
-    const mentorApplications = users.filter((u) => u.role === 'mentor' && u.mentorApprovalStatus === 'pending').length;
+  (users: User[], payments): PendingAction[] => {
+    const mentorApplications = users.filter((u: User) => u.role === UserRole.Mentor && u.mentorApprovalStatus === MentorApprovalStatus.Pending).length;
     const reportedIssues = payments.filter((p) => p.status === 'disputed').length;
     return [
-      { title: 'Mentor Applications', count: mentorApplications, priority: 'high', path: '/dashboard/admin/mentor-applications' },
-      { title: 'Reported Issues', count: reportedIssues, priority: 'high', path: '/dashboard/admin/payments' },
-      { title: 'Feature Requests', count: 0, priority: 'low', path: '/dashboard/admin/settings' },
+      { title: 'Mentor Applications', count: mentorApplications, priority: 'high', path: ROUTES.admin.mentorApplications },
+      { title: 'Reported Issues', count: reportedIssues, priority: 'high', path: ROUTES.admin.payments },
+      { title: 'Feature Requests', count: 0, priority: 'low', path: ROUTES.admin.settings },
     ];
   },
 );
 
-export const selectAdminReports = createSelector(selectDashboardState, (s) => s.adminReports);
+export { selectMenteeReviews, selectPlatformConfig };
+
 export const selectReportMetrics = createSelector(selectAdminReports, (r) => r.metrics);
-export const selectMenteeReviews = createSelector(selectDashboardState, (s) => s.menteeReviews);
-export const selectPlatformConfig = createSelector(selectDashboardState, (s) => s.platformConfig);
 
 /** Report metrics derived from store. */
 export const selectReportMetricsComputed = createSelector(
@@ -147,9 +211,9 @@ export const selectReportMetricsComputed = createSelector(
   selectAdminPayments,
   selectMenteeReviews,
   selectPlatformConfig,
-  (users, payments, reviews, config): ReportMetric[] => {
+  (users: User[], payments, reviews, config): ReportMetric[] => {
     const total = users.length;
-    const mentors = users.filter((u) => u.role === 'mentor' && u.mentorApprovalStatus !== 'rejected').length;
+    const mentors = users.filter((u: User) => u.role === UserRole.Mentor && u.mentorApprovalStatus !== MentorApprovalStatus.Rejected).length;
     const revenue = payments.reduce((sum, p) => sum + p.amount, 0);
     const avgRating = reviews.length ? (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length).toFixed(1) : (config?.avgSessionRating ?? DEFAULT_AVG_RATING);
     return [
@@ -164,22 +228,33 @@ export const selectReportMetricsComputed = createSelector(
 export const selectReportRevenueData = createSelector(selectAdminReports, (r) => r.revenueData);
 export const selectReportUserGrowth = createSelector(selectAdminReports, (r) => r.userGrowth);
 
-/** User growth bars derived from platformUsers by role. */
-export const selectReportUserGrowthComputed = createSelector(
+/** User growth bars derived from platformUsers by role (domain only). */
+const selectReportUserGrowthDomain = createSelector(
   selectPlatformUsers,
-  (users): UserGrowthBar[] => {
-    const mentees = users.filter((u) => u.role === 'mentee').length;
-    const mentors = users.filter((u) => u.role === 'mentor').length;
-    const admins = users.filter((u) => u.role === 'admin').length;
-    return [
-      { label: 'Mentees', count: mentees, color: 'bg-blue-500' },
-      { label: 'Mentors', count: mentors, color: 'bg-purple-500' },
-      { label: 'Admins', count: admins, color: 'bg-primary' },
-    ];
-  },
+  (users: User[]): UserGrowthBar[] => [
+    { label: 'Mentees', count: users.filter((u: User) => u.role === UserRole.Mentee).length },
+    { label: 'Mentors', count: users.filter((u: User) => u.role === UserRole.Mentor).length },
+    { label: 'Admins', count: users.filter((u: User) => u.role === UserRole.Admin).length },
+  ],
 );
+
+/** User growth bars with color from constants. */
+export const selectReportUserGrowthComputed = createSelector(selectReportUserGrowthDomain, (bars) =>
+  bars.map((b) => ({ ...b, color: USER_GROWTH_COLORS[b.label] ?? 'bg-gray-500' })),
+);
+
 export const selectReportTopMentors = createSelector(selectAdminReports, (r) => r.topMentors);
-export const selectReportRecentActivity = createSelector(selectAdminReports, (r) => r.recentActivity);
+
+/** Recent activity domain (id, text, time). */
+const selectReportRecentActivityDomain = createSelector(selectAdminReports, (r) => r.recentActivity);
+
+/** Recent activity with icon/iconBg from constants for display. */
+export const selectReportRecentActivity = createSelector(selectReportRecentActivityDomain, (activities) =>
+  activities.map((a) => {
+    const display = REPORT_ACTIVITY_DISPLAY[a.id];
+    return { ...a, icon: display?.icon ?? ['fas', 'circle'], iconBg: display?.iconBg ?? 'bg-gray-100' };
+  }),
+);
 export const selectReportMaxRevenue = createSelector(selectReportRevenueData, (data) =>
   data.length ? Math.max(...data.map((d) => d.value)) : 0,
 );
@@ -199,41 +274,34 @@ export const selectReportUserGrowthChart = createSelector(
   selectReportMaxUsers,
   (data, maxUsers) => ({ data, maxUsers }),
 );
-/** User growth chart from store-derived data. */
 export const selectReportUserGrowthChartComputed = createSelector(
   selectReportUserGrowthComputed,
   selectReportMaxUsersComputed,
   (data, maxUsers) => ({ data, maxUsers }),
 );
 
-export const selectActiveMentorsList = createSelector(selectMyMentors, (m) => m.active);
-export const selectPastMentorsList = createSelector(selectMyMentors, (m) => m.past);
+export { selectActiveMentorsList, selectPastMentorsList };
+export { selectMenteeReports, selectMentorProfileReviews };
 
-export const selectMenteeReports = createSelector(selectDashboardState, (s) => s.menteeReports);
-
-/** Public mentor profile reviews (for mentor profile and reviews page). Filter by mentorId in component. */
-export const selectMentorProfileReviews = createSelector(selectDashboardState, (s) => s.mentorProfileReviews);
-
-/** Avg rating derived from menteeReviews (1-5 scale). Returns formatted string. */
+/** Avg rating derived from menteeReviews. */
 export const selectAvgSessionRating = createSelector(
   selectMenteeReviews,
   selectPlatformConfig,
   (reviews, config) => {
     if (!reviews.length) return config?.avgSessionRating ?? DEFAULT_AVG_RATING;
-    const sum = reviews.reduce((a, r) => a + r.rating, 0);
-    return (sum / reviews.length).toFixed(1);
+    return (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length).toFixed(1);
   },
 );
 
-/** Platform stats for public/marketing pages (landing, about). Derived from store. */
-export const selectPlatformStatsForMarketing = createSelector(selectPlatformUsers, (users) => {
+/** Platform stats for public/marketing pages. */
+export const selectPlatformStatsForMarketing = createSelector(selectPlatformUsers, (users: User[]) => {
   const total = users.length;
-  const mentors = users.filter((u) => u.role === 'mentor' && u.mentorApprovalStatus !== 'rejected').length;
-  const mentees = users.filter((u) => u.role === 'mentee').length;
+  const mentors = users.filter((u: User) => u.role === UserRole.Mentor && u.mentorApprovalStatus !== MentorApprovalStatus.Rejected).length;
+  const mentees = users.filter((u: User) => u.role === UserRole.Mentee).length;
   return { total, mentors, mentees };
 });
 
-/** Platform stats + config for marketing (total, mentors, satisfaction, countries, samplePrice). */
+/** Platform stats + config for marketing. */
 export const selectPlatformMarketingData = createSelector(
   selectPlatformStatsForMarketing,
   selectPlatformConfig,
@@ -245,7 +313,7 @@ export const selectPlatformMarketingData = createSelector(
   }),
 );
 
-/** Review count per mentor id (for browse cards and profile). Keys are mentor ids, values are counts. */
+/** Review count per mentor id. */
 export const selectMentorProfileReviewCountByMentorId = createSelector(selectMentorProfileReviews, (reviews) => {
   const map: Record<string, number> = {};
   for (const r of reviews) {
@@ -254,37 +322,66 @@ export const selectMentorProfileReviewCountByMentorId = createSelector(selectMen
   return map;
 });
 
-/** Reports with mentee name resolved from myMentees or platformUsers (for mentor/admin views) */
+/** Reports with mentee name resolved. */
 export const selectMenteeReportsWithMenteeNames = createSelector(
   selectMenteeReports,
   selectMyMentees,
   selectPlatformUsers,
   (reports, mentees, users) =>
-    reports.map((r) => {
-      const fromMentees = mentees.find((m) => m.id === r.menteeId)?.name;
-      const fromUsers = users.find((u) => u.id === String(r.menteeId))?.name;
-      return {
-        ...r,
-        menteeName: fromMentees ?? fromUsers ?? `Mentee #${r.menteeId}`,
-      };
-    }),
+    reports.map((r) => ({
+      ...r,
+      menteeName: mentees.find((m) => m.id === r.menteeId)?.name ?? users.find((u) => u.id === String(r.menteeId))?.name ?? `Mentee #${r.menteeId}`,
+    })),
 );
 
-/** Mentee: only reports for the current user (filter by menteeId). */
+/** Mentee: only reports for the current user. */
 export const selectMenteeReportsForCurrentMentee = createSelector(
   selectAuthUser,
   selectMenteeReports,
-  (user, reports) =>
-    user ? reports.filter((r) => Number(user.id) === r.menteeId) : [],
+  (user, reports) => (user ? reports.filter((r) => Number(user.id) === r.menteeId) : []),
 );
 
-/** Mentor: only reports written by the current user (filter by mentorId), with mentee names. */
+/** Mentor: only reports written by the current user. */
 export const selectMenteeReportsForCurrentMentor = createSelector(
   selectAuthUser,
   selectMenteeReportsWithMenteeNames,
-  (user, reports) =>
-    user ? reports.filter((r) => Number(user.id) === r.mentorId) : [],
+  (user, reports) => (user ? reports.filter((r) => Number(user.id) === r.mentorId) : []),
 );
+
+/** Unified pending item. */
+export interface UnifiedPendingItem {
+  id: number;
+  name: string;
+  goalOrPlan: string;
+  detail: string;
+  rating: number | null;
+  source: 'request' | 'mentee';
+  latestReport: (MenteeReport & { menteeName: string }) | null;
+}
+
+/** Pending requests with latest report. */
+export interface PendingRequestWithReport {
+  request: PendingMentorshipRequest;
+  latestReport: (MenteeReport & { menteeName: string }) | null;
+}
+
+export const selectPendingRequestsWithLatestReport = createSelector(
+  selectMentorPendingRequests,
+  selectMenteeReportsWithMenteeNames,
+  (requests, reports): PendingRequestWithReport[] =>
+    requests.map((request) => {
+      const menteeReports = reports
+        .filter((r) => r.menteeName === request.name)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return { request, latestReport: menteeReports[0] ?? null };
+    }),
+);
+
+/** Report by id. */
+export const selectReportById = (reportId: number) =>
+  createSelector(selectMenteeReportsWithMenteeNames, (reports) =>
+    reports.find((r) => r.id === reportId) ?? null,
+  );
 
 export const selectPastMentorsWithReviews = createSelector(
   selectPastMentorsList,
@@ -303,4 +400,115 @@ export const selectMyMenteesPending = createSelector(selectMyMentees, (list) =>
 );
 export const selectMyMenteesActive = createSelector(selectMyMentees, (list) =>
   list.filter((m) => m.status === 'active'),
+);
+
+/** Unified pending (dashboard + my-mentees). */
+export const selectAllUnifiedPending = createSelector(
+  selectPendingRequestsWithLatestReport,
+  selectMyMenteesPending,
+  selectMenteeReportsWithMenteeNames,
+  (pendingWithReports, pendingMentees, reports): UnifiedPendingItem[] => {
+    const fromRequests: UnifiedPendingItem[] = pendingWithReports.map((item) => ({
+      id: item.request.id,
+      name: item.request.name,
+      goalOrPlan: item.request.goal,
+      detail: item.request.message,
+      rating: item.request.rating,
+      source: 'request' as const,
+      latestReport: item.latestReport,
+    }));
+    const fromMentees: UnifiedPendingItem[] = pendingMentees.map((m) => {
+      const menteeReports = reports
+        .filter((r) => r.menteeName === m.name)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return {
+        id: m.id,
+        name: m.name,
+        goalOrPlan: m.plan,
+        detail: m.email,
+        rating: null,
+        source: 'mentee' as const,
+        latestReport: menteeReports[0] ?? null,
+      };
+    });
+    return [...fromRequests, ...fromMentees];
+  },
+);
+
+/** Chat / conversations */
+export const selectConversations = selectAllConversations;
+export { selectSelectedConversationId, selectSelectedConversation, selectMentorUnreadByConversation };
+
+/** Mentor: conversations where current user is the mentor. */
+export const selectMentorConversations = createSelector(
+  selectAuthUser,
+  selectAllConversations,
+  (user, conversations: ChatConversation[]): ChatConversation[] =>
+    user ? conversations.filter((c: ChatConversation) => c.mentorId === user.id) : [],
+);
+
+/** Mentee: conversations where current user is the mentee. */
+export const selectMenteeConversations = createSelector(
+  selectAuthUser,
+  selectAllConversations,
+  (user, conversations: ChatConversation[]): ChatConversation[] =>
+    user ? conversations.filter((c: ChatConversation) => c.menteeId === user.id) : [],
+);
+
+/** Admin: all conversations. */
+export const selectAdminConversations = selectAllConversations;
+
+/** Mentor list items. */
+export const selectMentorConversationListItems = createSelector(
+  selectMentorConversations,
+  selectMentorUnreadByConversation,
+  (conversations, unreadByConv): ConversationListItem[] =>
+    conversations.map((c) => ({
+      id: c.id,
+      name: c.menteeName,
+      avatar: '',
+      lastMessage: c.lastMessage,
+      timestamp: c.lastTimestamp,
+      unread: (unreadByConv[c.id] ?? 0) > 0,
+      unreadCount: unreadByConv[c.id] ?? 0,
+    })),
+);
+
+/** Conversation id for a mentee. */
+export const selectConversationIdForMentee = (menteeIdOrName: number | string) =>
+  createSelector(selectMentorConversations, (conversations) => {
+    const conv = conversations.find(
+      (c) => c.menteeId === String(menteeIdOrName) || c.menteeName === menteeIdOrName,
+    );
+    return conv?.id ?? null;
+  });
+
+/** Unread count by mentee id and name. */
+export const selectMenteeUnreadCounts = createSelector(
+  selectMentorConversations,
+  selectMentorUnreadByConversation,
+  (conversations, unreadByConv) => {
+    const byId: Record<number, number> = {};
+    const byName: Record<string, number> = {};
+    for (const c of conversations) {
+      const count = unreadByConv[c.id] ?? 0;
+      byId[Number(c.menteeId)] = count;
+      byName[c.menteeName] = count;
+    }
+    return { byId, byName };
+  },
+);
+
+/** Mentee list items. */
+export const selectMenteeConversationListItems = createSelector(
+  selectMenteeConversations,
+  (conversations): ConversationListItem[] =>
+    conversations.map((c) => ({
+      id: c.id,
+      name: c.mentorName,
+      avatar: '',
+      lastMessage: c.lastMessage,
+      timestamp: c.lastTimestamp,
+      unread: false,
+    })),
 );

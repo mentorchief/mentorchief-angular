@@ -6,6 +6,7 @@ import {
   hydrateFromSessionSuccess,
 } from './registration.actions';
 import type { RegistrationData } from '../../../core/models/registration.model';
+import { UserRole } from '../../../core/models/user.model';
 
 const SIGNUP_TEMP_KEY = 'mentorchief_signup_temp';
 
@@ -29,14 +30,14 @@ export class RegistrationEffects {
 
           const parsed = JSON.parse(raw) as {
             name?: string;
-            role?: 'mentee' | 'mentor';
+            role?: UserRole;
           };
 
           const [firstName, ...lastNameParts] = (parsed.name ?? '').split(' ');
 
           const data: RegistrationData = {
             ...this.createEmptyData(),
-            role: parsed.role ?? null,
+            role: parsed.role === UserRole.Mentee || parsed.role === UserRole.Mentor ? parsed.role : null,
             firstName: firstName ?? '',
             lastName: lastNameParts.join(' ') ?? '',
           };

@@ -14,10 +14,10 @@ export class AppInitializerService {
 
   async initializeApp(): Promise<void> {
     try {
-      const user = await firstValueFrom(this.authApi.loadCurrentUser());
-      this.store.dispatch(loadCurrentUserSuccess({ user }));
+      const userId = await firstValueFrom(this.authApi.loadCurrentUser());
+      this.store.dispatch(loadCurrentUserSuccess({ userId }));
     } catch {
-      this.store.dispatch(loadCurrentUserSuccess({ user: null }));
+      this.store.dispatch(loadCurrentUserSuccess({ userId: null }));
     }
   }
 }

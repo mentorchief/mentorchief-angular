@@ -1,4 +1,21 @@
-export type UserRole = 'mentee' | 'mentor' | 'admin';
+export enum UserRole {
+  Mentee = 'mentee',
+  Mentor = 'mentor',
+  Admin = 'admin',
+}
+
+/** Display labels for roles (single source for UI strings). */
+export const ROLE_DISPLAY_LABELS: Record<UserRole, string> = {
+  [UserRole.Mentee]: 'Mentee',
+  [UserRole.Mentor]: 'Mentor',
+  [UserRole.Admin]: 'Admin',
+};
+
+export enum MentorApprovalStatus {
+  Pending = 'pending',
+  Approved = 'approved',
+  Rejected = 'rejected',
+}
 
 export type MentorPlanDuration = 'monthly' | 'quarterly' | '6months';
 
@@ -43,7 +60,7 @@ export interface User {
   availability?: string[];
   menteeCapacity?: string;
   /** For mentors: application under admin review. Omitted or 'approved' = can use dashboard. */
-  mentorApprovalStatus?: 'pending' | 'approved' | 'rejected';
+  mentorApprovalStatus?: MentorApprovalStatus;
   /** Platform-level status (admin suspend/activate). Default 'active'. */
   status?: 'active' | 'suspended' | 'pending';
   /** Display join date (e.g. 'Jan 15, 2026'). */

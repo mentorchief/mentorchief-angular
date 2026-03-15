@@ -7,7 +7,8 @@ import { Observable } from 'rxjs';
 import type { AppState } from '../../store/app.state';
 import { selectAuthUser } from '../../features/auth/store/auth.selectors';
 import { logout } from '../../features/auth/store/auth.actions';
-import type { User } from '../models/user.model';
+import { MentorApprovalStatus, UserRole, type User } from '../models/user.model';
+import { ROUTES } from '../routes';
 import { NavbarComponent } from '../../shared/components/navbar.component';
 import { ConfirmDialogService } from '../../shared/services/confirm-dialog.service';
 
@@ -90,53 +91,53 @@ export class DashboardLayoutComponent {
   }
 
   getNavItems(user: User): NavItem[] {
-    if (user.role === 'mentee') {
+    if (user.role === UserRole.Mentee) {
       return [
-        { label: 'Dashboard', path: '/dashboard/mentee', icon: ['fas', 'house'] },
-        { label: 'My Mentors', path: '/dashboard/mentee/my-mentors', icon: ['fas', 'users'] },
-        { label: 'Messages', path: '/dashboard/mentee/messages', icon: ['fas', 'message'] },
-        { label: 'Payments', path: '/dashboard/mentee/payments', icon: ['fas', 'credit-card'] },
-        { label: 'Reports', path: '/dashboard/mentee/reports', icon: ['fas', 'file-lines'] },
-        { label: 'Settings', path: '/dashboard/mentee/settings', icon: ['fas', 'gear'] },
+        { label: 'Dashboard', path: ROUTES.mentee.dashboard, icon: ['fas', 'house'] },
+        { label: 'My Mentors', path: ROUTES.mentee.myMentors, icon: ['fas', 'users'] },
+        { label: 'Messages', path: ROUTES.mentee.messages, icon: ['fas', 'message'] },
+        { label: 'Payments', path: ROUTES.mentee.payments, icon: ['fas', 'credit-card'] },
+        { label: 'Reports', path: ROUTES.mentee.reports, icon: ['fas', 'file-lines'] },
+        { label: 'Settings', path: ROUTES.mentee.settings, icon: ['fas', 'gear'] },
       ];
     }
 
-    if (user.role === 'mentor') {
-      const status = user.mentorApprovalStatus ?? 'approved';
-      if (status === 'pending') {
+    if (user.role === UserRole.Mentor) {
+      const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
+      if (status === MentorApprovalStatus.Pending) {
         return [
-          { label: 'Application status', path: '/dashboard/mentor/pending', icon: ['fas', 'clock'] },
+          { label: 'Application status', path: ROUTES.mentor.pending, icon: ['fas', 'clock'] },
         ];
       }
-      if (status === 'rejected') {
+      if (status === MentorApprovalStatus.Rejected) {
         return [
-          { label: 'Application status', path: '/dashboard/mentor/rejected', icon: ['fas', 'circle-xmark'] },
+          { label: 'Application status', path: ROUTES.mentor.rejected, icon: ['fas', 'circle-xmark'] },
         ];
       }
       return [
-        { label: 'Dashboard', path: '/dashboard/mentor', icon: ['fas', 'house'] },
-        { label: 'My Mentees', path: '/dashboard/mentor/my-mentees', icon: ['fas', 'users'] },
-        { label: 'Messages', path: '/dashboard/mentor/messages', icon: ['fas', 'message'] },
-        { label: 'Earnings', path: '/dashboard/mentor/earnings', icon: ['fas', 'wallet'] },
-        { label: 'Reports', path: '/dashboard/mentor/reports', icon: ['fas', 'file-lines'] },
-        { label: 'Settings', path: '/dashboard/mentor/settings', icon: ['fas', 'gear'] },
+        { label: 'Dashboard', path: ROUTES.mentor.dashboard, icon: ['fas', 'house'] },
+        { label: 'My Mentees', path: ROUTES.mentor.myMentees, icon: ['fas', 'users'] },
+        { label: 'Messages', path: ROUTES.mentor.messages, icon: ['fas', 'message'] },
+        { label: 'Earnings', path: ROUTES.mentor.earnings, icon: ['fas', 'wallet'] },
+        { label: 'Reports', path: ROUTES.mentor.reports, icon: ['fas', 'file-lines'] },
+        { label: 'Settings', path: ROUTES.mentor.settings, icon: ['fas', 'gear'] },
       ];
     }
 
-    if (user.role === 'admin') {
+    if (user.role === UserRole.Admin) {
       return [
-        { label: 'Dashboard', path: '/dashboard/admin', icon: ['fas', 'house'] },
-        { label: 'Mentor Applications', path: '/dashboard/admin/mentor-applications', icon: ['fas', 'user-check'] },
-        { label: 'Messages', path: '/dashboard/admin/messages', icon: ['fas', 'message'] },
-        { label: 'Users', path: '/dashboard/admin/users', icon: ['fas', 'users'] },
-        { label: 'Payments', path: '/dashboard/admin/payments', icon: ['fas', 'credit-card'] },
-        { label: 'Mentorship Reports', path: '/dashboard/admin/mentorship-reports', icon: ['fas', 'file-lines'] },
-        { label: 'Settings', path: '/dashboard/admin/settings', icon: ['fas', 'gear'] },
+        { label: 'Dashboard', path: ROUTES.admin.dashboard, icon: ['fas', 'house'] },
+        { label: 'Mentor Applications', path: ROUTES.admin.mentorApplications, icon: ['fas', 'user-check'] },
+        { label: 'Messages', path: ROUTES.admin.messages, icon: ['fas', 'message'] },
+        { label: 'Users', path: ROUTES.admin.users, icon: ['fas', 'users'] },
+        { label: 'Payments', path: ROUTES.admin.payments, icon: ['fas', 'credit-card'] },
+        { label: 'Mentorship Reports', path: ROUTES.admin.mentorshipReports, icon: ['fas', 'file-lines'] },
+        { label: 'Settings', path: ROUTES.admin.settings, icon: ['fas', 'gear'] },
       ];
     }
 
     return [
-      { label: 'Dashboard', path: '/dashboard', icon: ['fas', 'house'] },
+      { label: 'Dashboard', path: ROUTES.mentee.dashboard, icon: ['fas', 'house'] },
     ];
   }
 

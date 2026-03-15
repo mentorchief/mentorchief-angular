@@ -7,6 +7,7 @@ import { take } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { selectRegistrationData } from '../store/registration.selectors';
 import { updateData, setCurrentStep } from '../store/registration.actions';
+import { ROUTES } from '../../../core/routes';
 
 interface PersonalFormData {
   firstName: string;
@@ -202,14 +203,14 @@ export class PersonalInfoPageComponent {
   onBack(): void {
     this.store.dispatch(updateData({ updates: this.formData }));
     this.store.dispatch(setCurrentStep({ step: 1 }));
-    void this.router.navigate(['/auth/registration-steps/role-info']);
+    void this.router.navigate([ROUTES.registration.roleInfo]);
   }
 
   onNext(): void {
     if (this.validate()) {
       this.store.dispatch(updateData({ updates: this.formData }));
       this.store.dispatch(setCurrentStep({ step: 3 }));
-      void this.router.navigate(['/auth/registration-steps/career-info']);
+      void this.router.navigate([ROUTES.registration.careerInfo]);
     }
   }
 }

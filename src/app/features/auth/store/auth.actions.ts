@@ -9,7 +9,7 @@ export const login = createAction(
 
 export const loginSuccess = createAction(
   '[Auth] Login Success',
-  props<{ user: User }>(),
+  props<{ userId: string }>(),
 );
 
 export const loginFailure = createAction(
@@ -24,7 +24,7 @@ export const signup = createAction(
 
 export const signupSuccess = createAction(
   '[Auth] Signup Success',
-  props<{ user: User }>(),
+  props<{ userId: string }>(),
 );
 
 export const signupFailure = createAction(
@@ -36,7 +36,7 @@ export const loadCurrentUser = createAction('[Auth] Load Current User');
 
 export const loadCurrentUserSuccess = createAction(
   '[Auth] Load Current User Success',
-  props<{ user: User | null }>(),
+  props<{ userId: string | null }>(),
 );
 
 export const markRegistered = createAction(

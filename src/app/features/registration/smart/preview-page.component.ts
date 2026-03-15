@@ -11,7 +11,8 @@ import { selectAuthUser } from '../../auth/store/auth.selectors';
 import { resetData, setCurrentStep } from '../store/registration.actions';
 import { markRegistered } from '../../auth/store/auth.actions';
 import type { RegistrationData } from '../../../core/models/registration.model';
-import { User } from '../../../core/models/user.model';
+import { ROLE_DISPLAY_LABELS, User, UserRole } from '../../../core/models/user.model';
+import { ROUTES } from '../../../core/routes';
 
 @Component({
   selector: 'mc-preview-page',
@@ -58,7 +59,7 @@ import { User } from '../../../core/models/user.model';
               </div>
             </div>
             <span class="px-3 py-1 bg-secondary text-secondary-foreground rounded-md text-sm">
-              {{ data.role === 'mentor' ? 'Mentor' : 'Mentee' }}
+              {{ ROLE_DISPLAY_LABELS[data.role ?? UserRole.Mentee] }}
             </span>
           </div>
         </div>
@@ -145,7 +146,7 @@ import { User } from '../../../core/models/user.model';
         </div>
 
         <!-- Mentor Preferences -->
-        @if (data.role === 'mentor') {
+        @if (data.role === UserRole.Mentor) {
           <hr class="border-border" />
           <div class="space-y-4">
             <div class="flex items-center justify-between">
@@ -264,6 +265,8 @@ export class PreviewPageComponent {
   };
 
   user: User | null = null;
+  readonly ROLE_DISPLAY_LABELS = ROLE_DISPLAY_LABELS;
+  readonly UserRole = UserRole;
   isSubmitting = false;
   error = '';
 
@@ -279,17 +282,17 @@ export class PreviewPageComponent {
   handleEdit(step: number): void {
     this.store.dispatch(setCurrentStep({ step }));
     const paths = [
-      '/auth/registration-steps/role-info',
-      '/auth/registration-steps/personal-info',
-      '/auth/registration-steps/career-info',
-      '/auth/registration-steps/biography',
-      ...(this.data.role === 'mentor' ? ['/auth/registration-steps/preference'] : []),
+      ROUTES.registration.roleInfo,
+      ROUTES.registration.personalInfo,
+      ROUTES.registration.careerInfo,
+      ROUTES.registration.biography,
+      ...(this.data.role === UserRole.Mentor ? [ROUTES.registration.preference] : []),
     ];
     void this.router.navigate([paths[step - 1]]);
   }
 
   onBack(): void {
-    if (this.data.role === 'mentor') {
+    if (this.data.role === UserRole.Mentor) {
       this.handleEdit(5);
     } else {
       this.handleEdit(4);
@@ -329,7 +332,7 @@ export class PreviewPageComponent {
       portfolioUrl: this.data.portfolioUrl || undefined,
     };
 
-    if (this.data.role === 'mentor') {
+    if (this.data.role === UserRole.Mentor) {
       profile['subscriptionCost'] = this.data.subscriptionCost || undefined;
       profile['mentorPlans'] = this.data.mentorPlans.length ? this.data.mentorPlans : undefined;
       profile['availability'] = this.data.availability.length ? this.data.availability : undefined;
@@ -344,10 +347,10 @@ export class PreviewPageComponent {
 
     setTimeout(() => {
       this.isSubmitting = false;
-      if (this.data.role === 'mentor') {
-        void this.router.navigate(['/dashboard/mentor/pending']);
+      if (this.data.role === UserRole.Mentor) {
+        void this.router.navigate([ROUTES.mentor.pending]);
       } else {
-        void this.router.navigate(['/browse']);
+        void this.router.navigate([ROUTES.browse]);
       }
     }, 800);
   }

@@ -1,10 +1,14 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { Store } from '@ngrx/store';
+import type { AppState } from '../../../store/app.state';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import type { ChatConversation } from '../../../core/data/chats.data';
-import { ADMIN_CHATS } from '../../../core/data/chats.data';
+import type { ChatConversation } from '../../../core/models/chat.model';
+import { UserRole } from '../../../core/models/user.model';
+import { selectAdminConversations, selectSelectedConversation } from '../store/dashboard.selectors';
+import { selectConversation } from '../store/dashboard.actions';
 
 @Component({
   selector: 'mc-admin-messages-page',
@@ -22,7 +26,7 @@ import { ADMIN_CHATS } from '../../../core/data/chats.data';
             <button
               type="button"
               (click)="setFilter('all')"
-              [class]="filterStatus === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted'"
+              [class]="filterStatus() === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted'"
               class="px-3 py-1.5 rounded-md text-sm font-medium"
             >
               All
@@ -30,7 +34,7 @@ import { ADMIN_CHATS } from '../../../core/data/chats.data';
             <button
               type="button"
               (click)="setFilter('active')"
-              [class]="filterStatus === 'active' ? 'bg-primary text-primary-foreground' : 'bg-muted'"
+              [class]="filterStatus() === 'active' ? 'bg-primary text-primary-foreground' : 'bg-muted'"
               class="px-3 py-1.5 rounded-md text-sm font-medium"
             >
               Active
@@ -38,7 +42,7 @@ import { ADMIN_CHATS } from '../../../core/data/chats.data';
             <button
               type="button"
               (click)="setFilter('past')"
-              [class]="filterStatus === 'past' ? 'bg-primary text-primary-foreground' : 'bg-muted'"
+              [class]="filterStatus() === 'past' ? 'bg-primary text-primary-foreground' : 'bg-muted'"
               class="px-3 py-1.5 rounded-md text-sm font-medium"
             >
               Past
@@ -47,19 +51,19 @@ import { ADMIN_CHATS } from '../../../core/data/chats.data';
           <div class="mt-3">
             <input
               type="text"
-              [ngModel]="searchQuery"
-              (ngModelChange)="onSearchChange($event)"
+              [ngModel]="searchQuery()"
+              (ngModelChange)="searchQuery.set($event)"
               placeholder="Search by mentor or mentee..."
               class="w-full px-3 py-2 bg-input-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
             />
           </div>
         </div>
         <div class="flex-1 overflow-y-auto">
-          @for (conv of conversationsFiltered; track conv.id) {
+          @for (conv of conversationsFiltered(); track conv.id) {
             <button
               type="button"
-              (click)="selectConversation(conv)"
-              [class.bg-muted]="selectedConversation?.id === conv.id"
+              (click)="onSelectConversation(conv)"
+              [class.bg-muted]="selectedConversation()?.id === conv.id"
               class="w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left border-b border-border"
             >
               <div class="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
@@ -85,53 +89,53 @@ import { ADMIN_CHATS } from '../../../core/data/chats.data';
 
       <!-- Chat Area (Read-only) -->
       <div class="flex-1 flex flex-col bg-background">
-        @if (selectedConversation) {
+        @if (selectedConversation(); as sel) {
           <!-- Chat Header -->
           <div class="p-4 border-b border-border bg-card">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                  <span class="text-primary font-medium">{{ getInitials(selectedConversation.mentorName) }}</span>
+                  <span class="text-primary font-medium">{{ getInitials(sel.mentorName) }}</span>
                 </div>
                 <div>
                   <h3 class="text-foreground font-medium">
-                    <a [routerLink]="['/mentor', selectedConversation.mentorProfileId]" target="_blank" class="text-primary hover:underline no-underline">{{ selectedConversation.mentorName }}</a>
+                    <a [routerLink]="['/mentor', sel.mentorProfileId]" target="_blank" class="text-primary hover:underline no-underline">{{ sel.mentorName }}</a>
                     <span class="text-muted-foreground font-normal"> (Mentor) ↔ </span>
-                    <a routerLink="/dashboard/admin/users" class="text-primary hover:underline no-underline">{{ selectedConversation.menteeName }}</a>
+                    <a routerLink="/dashboard/admin/users" class="text-primary hover:underline no-underline">{{ sel.menteeName }}</a>
                     <span class="text-muted-foreground font-normal"> (Mentee)</span>
                   </h3>
                   <p class="text-muted-foreground text-xs mt-0.5">
-                    {{ selectedConversation.status === 'active' ? 'Active conversation' : 'Past conversation' }}
+                    {{ sel.status === 'active' ? 'Active conversation' : 'Past conversation' }}
                   </p>
                 </div>
               </div>
               <span
-                [class]="selectedConversation.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'"
+                [class]="sel.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'"
                 class="px-2.5 py-1 rounded-md text-xs font-medium"
               >
-                {{ selectedConversation.status }}
+                {{ sel.status }}
               </span>
             </div>
-            @if (selectedConversation.subscription) {
+            @if (sel.subscription) {
               <div class="mt-3 pt-3 border-t border-border flex flex-wrap gap-4 text-sm">
                 <span class="text-muted-foreground">
-                  <strong class="text-foreground">Plan:</strong> {{ selectedConversation.subscription.planName }}
+                  <strong class="text-foreground">Plan:</strong> {{ sel.subscription.planName }}
                 </span>
                 <span class="text-muted-foreground">
-                  <strong class="text-foreground">Amount:</strong> \${{ selectedConversation.subscription.amount }}/mo
+                  <strong class="text-foreground">Amount:</strong> \${{ sel.subscription.amount }}/mo
                 </span>
                 <span class="text-muted-foreground">
                   <strong class="text-foreground">Status:</strong>
-                  <span [class]="selectedConversation.subscription.status === 'active' ? 'text-green-600' : 'text-muted-foreground'">
-                    {{ selectedConversation.subscription.status }}
+                  <span [class]="sel.subscription.status === 'active' ? 'text-green-600' : 'text-muted-foreground'">
+                    {{ sel.subscription.status }}
                   </span>
                 </span>
                 <span class="text-muted-foreground">
-                  <strong class="text-foreground">Started:</strong> {{ selectedConversation.subscription.startDate }}
+                  <strong class="text-foreground">Started:</strong> {{ sel.subscription.startDate }}
                 </span>
-                @if (selectedConversation.subscription.validUntil) {
+                @if (sel.subscription.validUntil) {
                   <span class="text-muted-foreground">
-                    <strong class="text-foreground">Valid until:</strong> {{ selectedConversation.subscription.validUntil }}
+                    <strong class="text-foreground">Valid until:</strong> {{ sel.subscription.validUntil }}
                   </span>
                 }
               </div>
@@ -140,10 +144,10 @@ import { ADMIN_CHATS } from '../../../core/data/chats.data';
 
           <!-- Messages (Read-only) -->
           <div class="flex-1 overflow-y-auto p-4 space-y-4">
-            @for (msg of selectedConversation.messages; track msg.id) {
-              <div [class]="msg.senderRole === 'mentor' ? 'flex justify-start' : 'flex justify-end'">
+            @for (msg of sel.messages; track msg.id) {
+              <div [class]="msg.senderRole === UserRole.Mentor ? 'flex justify-start' : 'flex justify-end'">
                 <div
-                  [class]="msg.senderRole === 'mentor'
+                  [class]="msg.senderRole === UserRole.Mentor
                     ? 'bg-muted text-foreground'
                     : 'bg-primary text-primary-foreground'"
                   class="max-w-[70%] rounded-lg px-4 py-2"
@@ -151,7 +155,7 @@ import { ADMIN_CHATS } from '../../../core/data/chats.data';
                   <p class="text-xs font-medium opacity-80">{{ msg.senderName }} ({{ msg.senderRole }})</p>
                   <p class="text-sm mt-0.5">{{ msg.text }}</p>
                   <p
-                    [class]="msg.senderRole === 'mentor' ? 'text-muted-foreground' : 'text-primary-foreground/70'"
+                    [class]="msg.senderRole === UserRole.Mentor ? 'text-muted-foreground' : 'text-primary-foreground/70'"
                     class="text-xs mt-1"
                   >
                     {{ msg.timestamp }}
@@ -181,21 +185,24 @@ import { ADMIN_CHATS } from '../../../core/data/chats.data';
   `,
 })
 export class AdminMessagesPageComponent {
-  readonly cdr = inject(ChangeDetectorRef);
+  private readonly store = inject(Store<AppState>);
+  readonly UserRole = UserRole;
 
-  conversations: ChatConversation[] = ADMIN_CHATS;
-  selectedConversation: ChatConversation | null = null;
-  searchQuery = '';
-  filterStatus: 'all' | 'active' | 'past' = 'all';
+  readonly conversations = this.store.selectSignal(selectAdminConversations);
+  readonly selectedConversation = this.store.selectSignal(selectSelectedConversation);
+  searchQuery = signal('');
+  filterStatus = signal<'all' | 'active' | 'past'>('all');
 
-  get conversationsFiltered(): ChatConversation[] {
-    let list = this.conversations;
-    if (this.filterStatus === 'active') {
+  conversationsFiltered = computed(() => {
+    const raw = this.conversations();
+    let list: ChatConversation[] = Array.isArray(raw) ? raw : [];
+    const status = this.filterStatus();
+    if (status === 'active') {
       list = list.filter((c) => c.status === 'active');
-    } else if (this.filterStatus === 'past') {
+    } else if (status === 'past') {
       list = list.filter((c) => c.status === 'past');
     }
-    const q = this.searchQuery.toLowerCase().trim();
+    const q = this.searchQuery().toLowerCase().trim();
     if (!q) return list;
     return list.filter(
       (c) =>
@@ -203,21 +210,14 @@ export class AdminMessagesPageComponent {
         c.menteeName.toLowerCase().includes(q) ||
         c.lastMessage.toLowerCase().includes(q),
     );
-  }
+  });
 
   setFilter(status: 'all' | 'active' | 'past'): void {
-    this.filterStatus = status;
-    this.cdr.markForCheck();
+    this.filterStatus.set(status);
   }
 
-  onSearchChange(value: string): void {
-    this.searchQuery = value;
-    this.cdr.markForCheck();
-  }
-
-  selectConversation(conv: ChatConversation): void {
-    this.selectedConversation = conv;
-    this.cdr.markForCheck();
+  onSelectConversation(conv: ChatConversation): void {
+    this.store.dispatch(selectConversation({ conversationId: conv.id }));
   }
 
   getInitials(name: string): string {

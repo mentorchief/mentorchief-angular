@@ -9,6 +9,7 @@ import { take } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { selectRegistrationData } from '../store/registration.selectors';
 import { updateData, setCurrentStep } from '../store/registration.actions';
+import { ROUTES } from '../../../core/routes';
 import type { MentorPlan } from '../../../core/models/registration.model';
 
 interface PreferenceFormData {
@@ -251,7 +252,7 @@ export class PreferencePageComponent {
   onBack(): void {
     this.store.dispatch(updateData({ updates: this.formData }));
     this.store.dispatch(setCurrentStep({ step: 4 }));
-    void this.router.navigate(['/auth/registration-steps/biography']);
+    void this.router.navigate([ROUTES.registration.biography]);
   }
 
   onNext(): void {
@@ -264,7 +265,7 @@ export class PreferencePageComponent {
         }
       }));
       this.store.dispatch(setCurrentStep({ step: 6 }));
-      void this.router.navigate(['/auth/registration-steps/preview']);
+      void this.router.navigate([ROUTES.registration.preview]);
     }
   }
 }

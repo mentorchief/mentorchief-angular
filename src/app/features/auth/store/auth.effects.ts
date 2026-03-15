@@ -16,10 +16,11 @@ import {
   signupSuccess,
   updateProfile,
 } from './auth.actions';
-import { initializeDashboardForRole, resetDashboard } from '../../dashboard/store/dashboard.actions';
-import { selectAuthUser } from './auth.selectors';
+import { resetSession } from '../../../store/session/session.actions';
+import { ROUTES } from '../../../core/routes';
 import { AuthApiService } from '../../../core/services/auth-api.service';
-import type { User } from '../../../core/models/user.model';
+import { selectAuthUser } from './auth.selectors';
+import { MentorApprovalStatus, UserRole } from '../../../core/models/user.model';
 
 @Injectable()
 export class AuthEffects {
@@ -33,7 +34,7 @@ export class AuthEffects {
       ofType(login),
       switchMap(({ payload }) =>
         this.authApi.login(payload).pipe(
-          map((user: User) => loginSuccess({ user })),
+          map((user) => loginSuccess({ userId: user.id })),
           catchError((error: unknown) =>
             of(
               loginFailure({
@@ -51,7 +52,7 @@ export class AuthEffects {
       ofType(signup),
       switchMap(({ payload }) =>
         this.authApi.signup(payload).pipe(
-          map((user: User) => signupSuccess({ user })),
+          map((user) => signupSuccess({ userId: user.id })),
           catchError((error: unknown) =>
             of(
               signupFailure({
@@ -69,8 +70,8 @@ export class AuthEffects {
       ofType(loadCurrentUser),
       switchMap(() =>
         this.authApi.loadCurrentUser().pipe(
-          map((user) => loadCurrentUserSuccess({ user })),
-          catchError(() => of(loadCurrentUserSuccess({ user: null }))),
+          map((userId) => loadCurrentUserSuccess({ userId })),
+          catchError(() => of(loadCurrentUserSuccess({ userId: null }))),
         ),
       ),
     ),
@@ -94,65 +95,14 @@ export class AuthEffects {
     { dispatch: false },
   );
 
-  readonly initializeDashboardOnMarkRegistered$ = createEffect(
-    () =>
-      this.actions$.pipe(
-        ofType(markRegistered),
-        withLatestFrom(this.store.select(selectAuthUser)),
-        tap(([, user]) => {
-          if (user) {
-            this.store.dispatch(initializeDashboardForRole({ role: user.role }));
-          }
-        }),
-      ),
-    { dispatch: false },
-  );
-
   readonly logout$ = createEffect(
     () =>
       this.actions$.pipe(
         ofType(logout),
         switchMap(() => this.authApi.logout()),
         tap(() => {
-          this.store.dispatch(resetDashboard());
-          void this.router.navigate(['/login']);
-        }),
-      ),
-    { dispatch: false },
-  );
-
-  readonly initializeDashboardOnLogin$ = createEffect(
-    () =>
-      this.actions$.pipe(
-        ofType(loginSuccess),
-        tap(({ user }) => this.store.dispatch(initializeDashboardForRole({ role: user.role }))),
-      ),
-    { dispatch: false },
-  );
-
-  readonly initializeDashboardOnSignup$ = createEffect(
-    () =>
-      this.actions$.pipe(
-        ofType(signupSuccess),
-        tap(({ user }) => {
-          if (user.registered) {
-            this.store.dispatch(initializeDashboardForRole({ role: user.role }));
-          }
-        }),
-      ),
-    { dispatch: false },
-  );
-
-  readonly initializeDashboardOnLoadUser$ = createEffect(
-    () =>
-      this.actions$.pipe(
-        ofType(loadCurrentUserSuccess),
-        tap(({ user }) => {
-          if (user) {
-            this.store.dispatch(initializeDashboardForRole({ role: user.role }));
-          } else {
-            this.store.dispatch(resetDashboard());
-          }
+          this.store.dispatch(resetSession());
+          void this.router.navigate([ROUTES.login]);
         }),
       ),
     { dispatch: false },
@@ -162,20 +112,22 @@ export class AuthEffects {
     () =>
       this.actions$.pipe(
         ofType(loginSuccess),
-        tap(({ user }) => {
-          if (user.role === 'admin') {
-            void this.router.navigate(['/dashboard/admin']);
-          } else if (user.role === 'mentor') {
+        withLatestFrom(this.store.select(selectAuthUser)),
+        tap(([, user]) => {
+          if (!user) return;
+          if (user.role === UserRole.Admin) {
+            void this.router.navigate([ROUTES.admin.dashboard]);
+          } else if (user.role === UserRole.Mentor) {
             const status = user.mentorApprovalStatus ?? 'approved';
-            if (status === 'pending') void this.router.navigate(['/dashboard/mentor/pending']);
-            else if (status === 'rejected') void this.router.navigate(['/dashboard/mentor/rejected']);
-            else void this.router.navigate(['/dashboard/mentor']);
+            if (status === MentorApprovalStatus.Pending) void this.router.navigate([ROUTES.mentor.pending]);
+            else if (status === MentorApprovalStatus.Rejected) void this.router.navigate([ROUTES.mentor.rejected]);
+            else void this.router.navigate([ROUTES.mentor.dashboard]);
           } else {
             const returnUrl = this.getSafeReturnUrl();
             if (returnUrl) {
               void this.router.navigateByUrl(returnUrl);
             } else {
-              void this.router.navigate(['/dashboard/mentee']);
+              void this.router.navigate([ROUTES.mentee.dashboard]);
             }
           }
         }),
@@ -187,21 +139,23 @@ export class AuthEffects {
     () =>
       this.actions$.pipe(
         ofType(signupSuccess),
-        tap(({ user }) => {
+        withLatestFrom(this.store.select(selectAuthUser)),
+        tap(([, user]) => {
+          if (!user) return;
           if (user.registered) {
-            if (user.role === 'admin') {
-              void this.router.navigate(['/dashboard/admin']);
-            } else if (user.role === 'mentor') {
+            if (user.role === UserRole.Admin) {
+              void this.router.navigate([ROUTES.admin.dashboard]);
+            } else if (user.role === UserRole.Mentor) {
               const status = user.mentorApprovalStatus ?? 'approved';
-              if (status === 'pending') void this.router.navigate(['/dashboard/mentor/pending']);
-              else if (status === 'rejected') void this.router.navigate(['/dashboard/mentor/rejected']);
+              if (status === MentorApprovalStatus.Pending) void this.router.navigate(['/dashboard/mentor/pending']);
+              else if (status === MentorApprovalStatus.Rejected) void this.router.navigate(['/dashboard/mentor/rejected']);
               else void this.router.navigate(['/dashboard/mentor']);
             } else {
               const returnUrl = this.getSafeReturnUrl();
               if (returnUrl) {
                 void this.router.navigateByUrl(returnUrl);
               } else {
-                void this.router.navigate(['/dashboard/mentee']);
+                void this.router.navigate([ROUTES.mentee.dashboard]);
               }
             }
           } else {
@@ -210,7 +164,7 @@ export class AuthEffects {
               'mentorchief_signup_temp',
               JSON.stringify(signupTemp),
             );
-            void this.router.navigate(['/auth/registration-steps/role-info']);
+            void this.router.navigate([ROUTES.registration.roleInfo]);
           }
         }),
       ),

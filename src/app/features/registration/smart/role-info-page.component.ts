@@ -10,6 +10,8 @@ import {
 } from '../store/registration.selectors';
 import { updateData, setCurrentStep } from '../store/registration.actions';
 import type { RegistrationData } from '../../../core/models/registration.model';
+import { UserRole } from '../../../core/models/user.model';
+import { ROUTES } from '../../../core/routes';
 import { RoleInfoFormComponent } from '../ui/role-info-form.component';
 
 @Component({
@@ -29,7 +31,7 @@ export class RoleInfoPageComponent {
   readonly data$: Observable<RegistrationData>;
   readonly currentStep$: Observable<number>;
 
-  private selectedRole: 'mentee' | 'mentor' | null = null;
+  private selectedRole: UserRole.Mentee | UserRole.Mentor | null = null;
 
   constructor(
     private readonly store: Store<AppState>,
@@ -39,7 +41,7 @@ export class RoleInfoPageComponent {
     this.currentStep$ = this.store.select(selectRegistrationCurrentStep);
   }
 
-  onRoleChange(role: 'mentee' | 'mentor'): void {
+  onRoleChange(role: UserRole.Mentee | UserRole.Mentor): void {
     this.selectedRole = role;
     this.store.dispatch(updateData({ updates: { role } }));
   }
@@ -47,7 +49,7 @@ export class RoleInfoPageComponent {
   onNext(): void {
     if (this.selectedRole) {
       this.store.dispatch(setCurrentStep({ step: 2 }));
-      void this.router.navigate(['/auth/registration-steps/personal-info']);
+      void this.router.navigate([ROUTES.registration.personalInfo]);
     }
   }
 }

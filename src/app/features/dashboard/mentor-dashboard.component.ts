@@ -7,12 +7,15 @@ import type { AppState } from '../../store/app.state';
 import { selectAuthUser } from '../auth/store/auth.selectors';
 import {
   selectMentorStatsComputed,
-  selectMentorPendingRequests,
-  selectMentorActiveMentees,
+  selectAllUnifiedPending,
+  selectMyMenteesActive,
+  selectMenteeUnreadCounts,
   selectMentorEarnings,
+  type UnifiedPendingItem,
 } from './store/dashboard.selectors';
-import { map } from 'rxjs';
-import { acceptMentorshipRequest, declineMentorshipRequest } from './store/dashboard.actions';
+import { combineLatest, map } from 'rxjs';
+import { acceptMenteeRequest, acceptMentorshipRequest, declineMentorshipRequest, removeMenteeFromList } from './store/dashboard.actions';
+import { ROUTES } from '../../core/routes';
 import type { User } from '../../core/models/user.model';
 import { ConfirmDialogService } from '../../shared/services/confirm-dialog.service';
 import { ToastService } from '../../shared/services/toast.service';
@@ -55,40 +58,51 @@ import { ToastService } from '../../shared/services/toast.service';
             <div class="flex items-center justify-between mb-4">
               <div class="flex items-center gap-2">
                 <h3 class="text-gray-900 font-medium">Pending Requests</h3>
-                <span class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full">{{ (pendingRequests$ | async)?.length ?? 0 }} new</span>
+                <span class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full">{{ (pendingWithReports$ | async)?.length ?? 0 }} new</span>
               </div>
             </div>
             <div class="space-y-3">
-              @for (request of (pendingRequests$ | async) ?? []; track request.id) {
+              @for (item of (pendingWithReports$ | async) ?? []; track item.id + item.source) {
                 <div class="p-4 bg-gray-50 rounded-md border border-gray-200">
                   <div class="flex items-center gap-2 mb-3 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-md">
                     <fa-icon [icon]="['fas', 'chart-line']" class="text-indigo-600 w-4 h-4" />
                     <div>
-                      <span class="text-xs uppercase tracking-wide text-indigo-600/70 font-medium">Goal to achieve</span>
-                      <p class="text-sm text-indigo-600 font-medium">{{ request.goal }}</p>
+                      <span class="text-xs uppercase tracking-wide text-indigo-600/70 font-medium">{{ item.source === 'request' ? 'Goal to achieve' : 'Requested' }}</span>
+                      <p class="text-sm text-indigo-600 font-medium">{{ item.goalOrPlan }}</p>
                     </div>
                   </div>
                   <div class="flex items-start justify-between mb-2">
-                    <div class="text-gray-900 text-sm font-medium">{{ request.name }}</div>
-                    @if (request.rating != null) {
+                    <div class="text-gray-900 text-sm font-medium">{{ item.name }}</div>
+                    @if (item.rating != null) {
                     <div class="flex items-center gap-1">
                       <fa-icon [icon]="['fas', 'star']" class="text-amber-400 w-4 h-4" />
-                      <span class="text-sm text-gray-900">{{ request.rating }}</span>
+                      <span class="text-sm text-gray-900">{{ item.rating }}</span>
                     </div>
                   }
                   </div>
-                  <p class="text-sm text-gray-500 mb-3">{{ request.message }}</p>
+                  <p class="text-sm text-gray-500 mb-3">{{ item.detail }}</p>
+                  @if (item.latestReport) {
+                    <div class="mb-3">
+                      <a
+                        [routerLink]="ROUTES.mentor.reportView(item.latestReport.id)"
+                        class="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
+                      >
+                        <fa-icon [icon]="['fas', 'file-lines']" class="w-3.5 h-3.5" />
+                        View latest report from {{ item.latestReport.mentorName }}
+                      </a>
+                    </div>
+                  }
                   <div class="flex items-center gap-2">
                     <button
                       type="button"
-                      (click)="onAcceptRequest(request)"
+                      (click)="onAccept(item)"
                       class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-md text-sm hover:opacity-90"
                     >
                       <fa-icon [icon]="['fas', 'check']" class="w-3.5 h-3.5" /> Accept
                     </button>
                     <button
                       type="button"
-                      (click)="onDeclineRequest(request)"
+                      (click)="onDecline(item)"
                       class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50"
                     >
                       <fa-icon [icon]="['fas', 'xmark']" class="w-3.5 h-3.5" /> Decline
@@ -106,20 +120,28 @@ import { ToastService } from '../../shared/services/toast.service';
               <span class="text-gray-500 text-sm">{{ (activeMentees$ | async)?.length ?? 0 }} mentees</span>
             </div>
             <div class="space-y-4">
-              @for (mentee of (activeMentees$ | async) ?? []; track mentee.id) {
+              @for (mentee of (activeMenteesWithUnread$ | async) ?? []; track mentee.id) {
                 <div class="flex items-center gap-4">
-                  <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-sm font-medium">
-                    {{ getInitials(mentee.name) }}
+                  <div class="relative">
+                    <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-sm font-medium">
+                      {{ getInitials(mentee.name) }}
+                    </div>
+                    @if (mentee.unreadCount && mentee.unreadCount > 0) {
+                      <span class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-indigo-600 text-white text-xs font-medium rounded-full">
+                        {{ mentee.unreadCount > 99 ? '99+' : mentee.unreadCount }}
+                      </span>
+                    }
                   </div>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center justify-between">
                       <div class="text-gray-900 text-sm font-medium">{{ mentee.name }}</div>
-                      <div class="text-gray-500 text-xs">{{ mentee.monthsActive }} months active</div>
+                      <div class="text-gray-500 text-xs">{{ mentee.startDate }}</div>
                     </div>
-                    <div class="text-gray-500 text-xs mt-0.5">{{ mentee.goal }}</div>
+                    <div class="text-gray-500 text-xs mt-0.5">{{ mentee.plan }}</div>
                   </div>
                   <a
-                    routerLink="/dashboard/mentor/messages"
+                    [routerLink]="ROUTES.mentor.messages"
+                    [queryParams]="{ mentee: mentee.name }"
                     class="px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors no-underline"
                   >
                     Message
@@ -204,10 +226,22 @@ export class MentorDashboardComponent {
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
 
+  readonly ROUTES = ROUTES;
   readonly user$ = this.store.select(selectAuthUser);
   readonly mentorStats$ = this.store.select(selectMentorStatsComputed);
-  readonly pendingRequests$ = this.store.select(selectMentorPendingRequests);
-  readonly activeMentees$ = this.store.select(selectMentorActiveMentees);
+  readonly pendingWithReports$ = this.store.select(selectAllUnifiedPending);
+  readonly activeMentees$ = this.store.select(selectMyMenteesActive);
+  readonly activeMenteesWithUnread$ = combineLatest([
+    this.store.select(selectMyMenteesActive),
+    this.store.select(selectMenteeUnreadCounts),
+  ]).pipe(
+    map(([mentees, unread]) =>
+      mentees.map((m) => ({
+        ...m,
+        unreadCount: unread.byId[m.id] ?? unread.byName[m.name] ?? 0,
+      })),
+    ),
+  );
   readonly earnings$ = this.store.select(selectMentorEarnings);
   readonly totalEarned$ = this.earnings$.pipe(
     map((earnings) => earnings.reduce((sum, e) => sum + e.amount, 0)),
@@ -217,22 +251,32 @@ export class MentorDashboardComponent {
     return name.split(' ').map((n) => n[0]).join('').toUpperCase();
   }
 
-  onAcceptRequest(request: { id: number; name: string; goal: string; message: string; rating: number | null }): void {
-    this.store.dispatch(acceptMentorshipRequest({ request }));
-    this.toast.success(`${request.name} has been added to your mentees.`);
+  onAccept(item: UnifiedPendingItem): void {
+    if (item.source === 'request') {
+      this.store.dispatch(acceptMentorshipRequest({
+        request: { id: item.id, name: item.name, goal: item.goalOrPlan, message: item.detail, rating: item.rating },
+      }));
+    } else {
+      this.store.dispatch(acceptMenteeRequest({ menteeId: item.id }));
+    }
+    this.toast.success(`${item.name} has been added to your mentees.`);
   }
 
-  async onDeclineRequest(request: { id: number; name: string; goal: string }): Promise<void> {
+  async onDecline(item: { id: number; name: string; source: 'request' | 'mentee' }): Promise<void> {
     const confirmed = await this.confirmDialog.confirm({
       title: 'Decline request',
-      message: `Are you sure you want to decline ${request.name}'s mentorship request? They will be notified.`,
+      message: `Are you sure you want to decline ${item.name}'s mentorship request? They will be notified.`,
       confirmLabel: 'Yes, decline',
       cancelLabel: 'Keep request',
       variant: 'danger',
     });
     if (confirmed) {
-      this.store.dispatch(declineMentorshipRequest({ requestId: request.id }));
-      this.toast.success(`Request from ${request.name} has been declined.`);
+      if (item.source === 'request') {
+        this.store.dispatch(declineMentorshipRequest({ requestId: item.id }));
+      } else {
+        this.store.dispatch(removeMenteeFromList({ menteeId: item.id }));
+      }
+      this.toast.success(`Request from ${item.name} has been declined.`);
     }
   }
 }

@@ -4,9 +4,8 @@ import { Store } from '@ngrx/store';
 import { map, take } from 'rxjs';
 import type { AppState } from '../../store/app.state';
 import { selectIsAuthenticated, selectAuthUser } from '../../features/auth/store/auth.selectors';
-
-const MENTOR_PENDING_PATH = '/dashboard/mentor/pending';
-const MENTOR_REJECTED_PATH = '/dashboard/mentor/rejected';
+import { MentorApprovalStatus, UserRole } from '../models/user.model';
+import { ROUTES } from '../routes';
 
 export const authGuard: CanActivateFn = (_, state: RouterStateSnapshot) => {
   const store = inject(Store<AppState>);
@@ -18,7 +17,7 @@ export const authGuard: CanActivateFn = (_, state: RouterStateSnapshot) => {
       if (isAuthenticated) {
         return true;
       }
-      return router.createUrlTree(['/login'], {
+      return router.createUrlTree([ROUTES.login], {
         queryParams: { returnUrl: state.url },
       });
     }),
@@ -33,17 +32,17 @@ export const registrationGuard: CanActivateFn = () => {
     take(1),
     map((user) => {
       if (!user) {
-        return router.createUrlTree(['/signup']);
+        return router.createUrlTree([ROUTES.signup]);
       }
       if (user.registered) {
-        if (user.role === 'admin') return router.createUrlTree(['/dashboard/admin']);
-        if (user.role === 'mentor') {
-          const status = user.mentorApprovalStatus ?? 'approved';
-          if (status === 'pending') return router.createUrlTree([MENTOR_PENDING_PATH]);
-          if (status === 'rejected') return router.createUrlTree([MENTOR_REJECTED_PATH]);
-          return router.createUrlTree(['/dashboard/mentor']);
+        if (user.role === UserRole.Admin) return router.createUrlTree([ROUTES.admin.dashboard]);
+        if (user.role === UserRole.Mentor) {
+          const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
+          if (status === MentorApprovalStatus.Pending) return router.createUrlTree([ROUTES.mentor.pending]);
+          if (status === MentorApprovalStatus.Rejected) return router.createUrlTree([ROUTES.mentor.rejected]);
+          return router.createUrlTree([ROUTES.mentor.dashboard]);
         }
-        return router.createUrlTree(['/dashboard/mentee']);
+        return router.createUrlTree([ROUTES.mentee.dashboard]);
       }
       return true;
     }),
@@ -60,21 +59,21 @@ export const guestGuard: CanActivateFn = () => {
       if (!user) {
         return true;
       }
-      if (user.role === 'admin') {
-        return router.createUrlTree(['/dashboard/admin']);
+      if (user.role === UserRole.Admin) {
+        return router.createUrlTree([ROUTES.admin.dashboard]);
       }
-      if (user.role === 'mentor') {
-        const status = user.mentorApprovalStatus ?? 'approved';
-        if (status === 'pending') return router.createUrlTree([MENTOR_PENDING_PATH]);
-        if (status === 'rejected') return router.createUrlTree([MENTOR_REJECTED_PATH]);
-        return router.createUrlTree(['/dashboard/mentor']);
+      if (user.role === UserRole.Mentor) {
+        const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
+        if (status === MentorApprovalStatus.Pending) return router.createUrlTree([ROUTES.mentor.pending]);
+        if (status === MentorApprovalStatus.Rejected) return router.createUrlTree([ROUTES.mentor.rejected]);
+        return router.createUrlTree([ROUTES.mentor.dashboard]);
       }
-      return router.createUrlTree(['/dashboard/mentee']);
+      return router.createUrlTree([ROUTES.mentee.dashboard]);
     }),
   );
 };
 
-export const roleGuard = (allowedRoles: string[]): CanActivateFn => {
+export const roleGuard = (allowedRoles: UserRole[]): CanActivateFn => {
   return () => {
     const store = inject(Store<AppState>);
     const router = inject(Router);
@@ -86,18 +85,18 @@ export const roleGuard = (allowedRoles: string[]): CanActivateFn => {
           return true;
         }
         if (!user) {
-          return router.createUrlTree(['/login']);
+          return router.createUrlTree([ROUTES.login]);
         }
-        if (user.role === 'admin') {
-          return router.createUrlTree(['/dashboard/admin']);
+        if (user.role === UserRole.Admin) {
+          return router.createUrlTree([ROUTES.admin.dashboard]);
         }
-        if (user.role === 'mentor') {
-          const status = user.mentorApprovalStatus ?? 'approved';
-          if (status === 'pending') return router.createUrlTree([MENTOR_PENDING_PATH]);
-          if (status === 'rejected') return router.createUrlTree([MENTOR_REJECTED_PATH]);
-          return router.createUrlTree(['/dashboard/mentor']);
+        if (user.role === UserRole.Mentor) {
+          const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
+          if (status === MentorApprovalStatus.Pending) return router.createUrlTree([ROUTES.mentor.pending]);
+          if (status === MentorApprovalStatus.Rejected) return router.createUrlTree([ROUTES.mentor.rejected]);
+          return router.createUrlTree([ROUTES.mentor.dashboard]);
         }
-        return router.createUrlTree(['/dashboard/mentee']);
+        return router.createUrlTree([ROUTES.mentee.dashboard]);
       }),
     );
   };
@@ -111,20 +110,20 @@ export const mentorApprovalGuard: CanActivateFn = (_, state: RouterStateSnapshot
   return store.select(selectAuthUser).pipe(
     take(1),
     map((user) => {
-      if (!user || user.role !== 'mentor') {
+      if (!user || user.role !== UserRole.Mentor) {
         return true;
       }
-      const status = user.mentorApprovalStatus ?? 'approved';
-      if (status === 'approved') {
+      const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
+      if (status === MentorApprovalStatus.Approved) {
         return true;
       }
-      if (status === 'pending') {
-        const onPendingPage = state.url === MENTOR_PENDING_PATH || state.url.startsWith(MENTOR_PENDING_PATH + '?');
-        return onPendingPage ? true : router.createUrlTree([MENTOR_PENDING_PATH]);
+      if (status === MentorApprovalStatus.Pending) {
+        const onPendingPage = state.url === ROUTES.mentor.pending || state.url.startsWith(ROUTES.mentor.pending + '?');
+        return onPendingPage ? true : router.createUrlTree([ROUTES.mentor.pending]);
       }
-      if (status === 'rejected') {
-        const onRejectedPage = state.url === MENTOR_REJECTED_PATH || state.url.startsWith(MENTOR_REJECTED_PATH + '?');
-        return onRejectedPage ? true : router.createUrlTree([MENTOR_REJECTED_PATH]);
+      if (status === MentorApprovalStatus.Rejected) {
+        const onRejectedPage = state.url === ROUTES.mentor.rejected || state.url.startsWith(ROUTES.mentor.rejected + '?');
+        return onRejectedPage ? true : router.createUrlTree([ROUTES.mentor.rejected]);
       }
       return true;
     }),

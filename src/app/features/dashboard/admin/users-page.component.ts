@@ -9,7 +9,7 @@ import { PaginationComponent } from '../../../shared/components/pagination.compo
 import type { AppState } from '../../../store/app.state';
 import { selectPlatformUsers } from '../store/dashboard.selectors';
 import { addUser, updateUserStatus } from '../store/dashboard.actions';
-import type { User } from '../../../core/models/user.model';
+import { UserRole, MentorApprovalStatus, type User } from '../../../core/models/user.model';
 
 const PAGE_SIZE = 10;
 
@@ -252,7 +252,7 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
     name: '',
     email: '',
     password: '',
-    role: 'mentee' as User['role'],
+    role: UserRole.Mentee,
     phone: '',
   };
 
@@ -261,7 +261,7 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
       .select(selectPlatformUsers)
       .pipe(takeUntil(this.destroy$))
       .subscribe((list) => {
-        this.usersList = list;
+        this.usersList = Array.isArray(list) ? (list as User[]) : [];
         this.cdr.markForCheck();
       });
   }
@@ -322,11 +322,12 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   }
 
-  getRoleClass(role: User['role']): string {
+  getRoleClass(role: UserRole): string {
     switch (role) {
-      case 'mentor': return 'bg-purple-100 text-purple-700';
-      case 'mentee': return 'bg-blue-100 text-blue-700';
-      case 'admin': return 'bg-primary/10 text-primary';
+      case UserRole.Mentor: return 'bg-purple-100 text-purple-700';
+      case UserRole.Mentee: return 'bg-blue-100 text-blue-700';
+      case UserRole.Admin: return 'bg-primary/10 text-primary';
+      default: return 'bg-muted text-muted-foreground';
     }
   }
 
@@ -341,7 +342,7 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
   onOpenAddUser(): void {
     this.showAddUserForm = true;
     this.addUserError = '';
-    this.addUserForm = { name: '', email: '', password: '', role: 'mentee', phone: '' };
+    this.addUserForm = { name: '', email: '', password: '', role: UserRole.Mentee, phone: '' };
     this.cdr.markForCheck();
   }
 
@@ -382,11 +383,11 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
       status: 'active',
       joinDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       ...(phone?.trim() ? { phone: phone.trim() } : {}),
-      ...(role === 'mentor' ? { mentorApprovalStatus: 'approved' as const } : {}),
+      ...(role === UserRole.Mentor ? { mentorApprovalStatus: MentorApprovalStatus.Approved } : {}),
     };
     this.store.dispatch(addUser({ user: newUser }));
     this.showAddUserForm = false;
-    this.addUserForm = { name: '', email: '', password: '', role: 'mentee', phone: '' };
+    this.addUserForm = { name: '', email: '', password: '', role: UserRole.Mentee, phone: '' };
     this.toast.success(`${nameTrim} has been added.`);
     this.cdr.markForCheck();
   }

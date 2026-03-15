@@ -1,5 +1,6 @@
 import { createReducer, on } from '@ngrx/store';
 import type { RegistrationState, RegistrationData } from '../../../core/models/registration.model';
+import { UserRole } from '../../../core/models/user.model';
 import {
   hydrateFromSessionSuccess,
   resetData,
@@ -42,7 +43,7 @@ export const registrationReducer = createReducer(
       ...state.data,
       ...updates,
     };
-    const totalSteps = data.role === 'mentor' ? 6 : 5;
+    const totalSteps = data.role === UserRole.Mentor ? 6 : 5;
     return {
       ...state,
       data,
@@ -55,7 +56,7 @@ export const registrationReducer = createReducer(
     currentStep: step,
   })),
   on(hydrateFromSessionSuccess, (state, { data }): RegistrationState => {
-    const totalSteps = data.role === 'mentor' ? 6 : 5;
+    const totalSteps = data.role === UserRole.Mentor ? 6 : 5;
     return {
       ...state,
       data,

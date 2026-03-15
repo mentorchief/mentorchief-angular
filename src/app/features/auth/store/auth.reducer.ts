@@ -6,17 +6,13 @@ import {
   loginFailure,
   loginSuccess,
   logout,
-  markRegistered,
   signup,
   signupFailure,
   signupSuccess,
-  updateProfile,
 } from './auth.actions';
 
 const initialState: AuthState = {
-  user: null,
-  isAuthenticated: false,
-  isRegistered: false,
+  userId: null,
   loading: false,
   error: null,
 };
@@ -28,11 +24,9 @@ export const authReducer = createReducer(
     loading: true,
     error: null,
   })),
-  on(loginSuccess, signupSuccess, (state, { user }): AuthState => ({
+  on(loginSuccess, signupSuccess, (state, { userId }): AuthState => ({
     ...state,
-    user,
-    isAuthenticated: true,
-    isRegistered: user.registered === true,
+    userId,
     loading: false,
     error: null,
   })),
@@ -41,42 +35,10 @@ export const authReducer = createReducer(
     loading: false,
     error,
   })),
-  on(loadCurrentUserSuccess, (state, { user }): AuthState => ({
+  on(loadCurrentUserSuccess, (state, { userId }): AuthState => ({
     ...state,
-    user,
-    isAuthenticated: !!user,
-    isRegistered: user?.registered === true,
+    userId: userId ?? null,
   })),
-  on(markRegistered, (state, { updates }): AuthState => {
-    const user = state.user;
-    if (!user) {
-      return state;
-    }
-    const updatedUser = {
-      ...user,
-      registered: true,
-      ...updates,
-    };
-    return {
-      ...state,
-      user: updatedUser,
-      isRegistered: true,
-    };
-  }),
-  on(updateProfile, (state, { updates }): AuthState => {
-    const user = state.user;
-    if (!user) {
-      return state;
-    }
-    const updatedUser = {
-      ...user,
-      ...updates,
-    };
-    return {
-      ...state,
-      user: updatedUser,
-    };
-  }),
   on(logout, (): AuthState => initialState),
 );
 

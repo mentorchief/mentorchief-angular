@@ -1,13 +1,15 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, take } from 'rxjs';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 import { ToastService } from '../../../shared/services/toast.service';
 import type { AppState } from '../../../store/app.state';
-import { selectMentorEarningsForDisplay, selectMentorActiveMentees } from '../store/dashboard.selectors';
+import { selectMentorEarningsForDisplay, selectMentorActiveMentees, selectMentorPayoutAccount } from '../store/dashboard.selectors';
+import { updateMentorPayoutAccount } from '../store/dashboard.actions';
 
 type EarningRow = { id: string; date: string; mentee: string; amount: number; status: 'paid' | 'in_escrow' | 'pending'; period: string };
 
@@ -16,7 +18,7 @@ const PAGE_SIZE = 10;
 @Component({
   selector: 'mc-mentor-earnings-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, FontAwesomeModule, PaginationComponent],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, FontAwesomeModule, PaginationComponent],
   template: `
     <div class="p-6 lg:p-8">
       <div class="mb-8">
@@ -76,9 +78,6 @@ const PAGE_SIZE = 10;
               \${{ inEscrow }} will be released to your account when current mentorship periods complete.
             </p>
           </div>
-          <button type="button" (click)="onViewDetails()" class="px-4 py-2 bg-amber-600 text-white rounded-md text-sm hover:bg-amber-700">
-            View Details
-          </button>
         </div>
       </div>
 
@@ -104,9 +103,6 @@ const PAGE_SIZE = 10;
               <option value="in_escrow">In Escrow</option>
               <option value="pending">Pending</option>
             </select>
-            <button type="button" (click)="onExportCsv()" class="px-4 py-2 border border-border text-foreground rounded-md text-sm hover:bg-muted">
-              Export CSV
-            </button>
           </div>
         </div>
         <div class="overflow-x-auto">
@@ -151,22 +147,88 @@ const PAGE_SIZE = 10;
       <div class="mt-8 bg-card rounded-lg border border-border p-5">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-lg text-foreground font-medium">Payout Account</h2>
-          <button type="button" (click)="onUpdatePayout()" class="px-4 py-2 border border-border text-foreground rounded-md text-sm hover:bg-muted">
+          <button type="button" (click)="openPayoutDialog()" class="px-4 py-2 border border-border text-foreground rounded-md text-sm hover:bg-muted">
             Update
           </button>
         </div>
         <div class="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-          <div class="w-12 h-8 bg-blue-600 rounded flex items-center justify-center">
-            <span class="text-white text-xs font-bold">BANK</span>
-          </div>
-          <div class="flex-1">
-            <p class="text-foreground text-sm font-medium">Chase Bank •••• 8842</p>
-            <p class="text-muted-foreground text-xs">Checking Account</p>
-          </div>
-          <span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">Verified</span>
+          @if ((payoutAccount$ | async); as payoutAccount) {
+          @if (payoutAccount.type === 'bank') {
+            <div class="w-12 h-8 bg-blue-600 rounded flex items-center justify-center">
+              <span class="text-white text-xs font-bold">BANK</span>
+            </div>
+            <div class="flex-1">
+              <p class="text-foreground text-sm font-medium">{{ payoutAccount.bankName }} •••• {{ payoutAccount.accountNumber?.slice(-4) ?? '----' }}</p>
+            </div>
+          } @else {
+            <div class="w-12 h-8 bg-indigo-600 rounded flex items-center justify-center">
+              <span class="text-white text-xs font-bold">INSTAPAY</span>
+            </div>
+            <div class="flex-1">
+              <p class="text-foreground text-sm font-medium">•••• {{ payoutAccount.instapayNumber?.slice(-4) ?? '----' }}</p>
+              <p class="text-muted-foreground text-xs">Instapay</p>
+            </div>
+          }
+          }
         </div>
       </div>
     </div>
+
+    <!-- Payout Account Dialog -->
+    @if (payoutDialogOpen) {
+      <div
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payout-dialog-title"
+      >
+        <div class="absolute inset-0 bg-foreground/50 backdrop-blur-sm" (click)="closePayoutDialog()"></div>
+        <div class="relative bg-card rounded-lg shadow-xl border border-border max-w-md w-full p-6" (click)="$event.stopPropagation()">
+          <h2 id="payout-dialog-title" class="text-lg font-medium text-foreground mb-4">Update Payout Account</h2>
+          <form [formGroup]="payoutForm" (ngSubmit)="onSavePayout()" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-foreground mb-1.5">Account Type <span class="text-destructive">*</span></label>
+              <select formControlName="type" (change)="onPayoutTypeChange()" class="w-full px-4 py-2 bg-input-background border border-border rounded-md text-sm">
+                <option value="bank">Bank Account</option>
+                <option value="instapay">Instapay</option>
+              </select>
+            </div>
+            @if (payoutForm.get('type')?.value === 'bank') {
+              <div>
+                <label class="block text-sm font-medium text-foreground mb-1.5">Bank Name <span class="text-destructive">*</span></label>
+                <input formControlName="bankName" type="text" placeholder="e.g. Chase Bank" class="w-full px-4 py-2 bg-input-background border border-border rounded-md text-sm" />
+                @if (payoutForm.get('bankName')?.invalid && payoutForm.get('bankName')?.touched) {
+                  <p class="text-destructive text-xs mt-1">Bank name is required</p>
+                }
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-foreground mb-1.5">Account Number <span class="text-destructive">*</span></label>
+                <input formControlName="accountNumber" type="text" placeholder="Account number" class="w-full px-4 py-2 bg-input-background border border-border rounded-md text-sm" />
+                @if (payoutForm.get('accountNumber')?.invalid && payoutForm.get('accountNumber')?.touched) {
+                  <p class="text-destructive text-xs mt-1">Account number is required (min 8 characters)</p>
+                }
+              </div>
+            } @else {
+              <div>
+                <label class="block text-sm font-medium text-foreground mb-1.5">Instapay Number <span class="text-destructive">*</span></label>
+                <input formControlName="instapayNumber" type="text" placeholder="Phone number or Instapay ID" class="w-full px-4 py-2 bg-input-background border border-border rounded-md text-sm" />
+                @if (payoutForm.get('instapayNumber')?.invalid && payoutForm.get('instapayNumber')?.touched) {
+                  <p class="text-destructive text-xs mt-1">Instapay number is required (min 10 characters)</p>
+                }
+              </div>
+            }
+            <div class="flex justify-end gap-3 pt-4">
+              <button type="button" (click)="closePayoutDialog()" class="px-4 py-2 border border-border text-foreground rounded-md hover:bg-muted">
+                Cancel
+              </button>
+              <button type="submit" [disabled]="payoutForm.invalid" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50">
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -174,6 +236,7 @@ export class MentorEarningsPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store<AppState>);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly toast = inject(ToastService);
+  private readonly fb = inject(FormBuilder);
   private readonly destroy$ = new Subject<void>();
 
   earningsList: EarningRow[] = [];
@@ -182,6 +245,14 @@ export class MentorEarningsPageComponent implements OnInit, OnDestroy {
   currentPage = 1;
   searchQuery = '';
   filterStatus = '';
+  payoutDialogOpen = false;
+  readonly payoutAccount$ = this.store.select(selectMentorPayoutAccount);
+  payoutForm: FormGroup = this.fb.group({
+    type: ['bank' as const, Validators.required],
+    bankName: ['', Validators.required],
+    accountNumber: ['', [Validators.required, Validators.minLength(8)]],
+    instapayNumber: ['', [Validators.required, Validators.minLength(10)]],
+  });
 
   ngOnInit(): void {
     this.store
@@ -266,15 +337,58 @@ export class MentorEarningsPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  onViewDetails(): void {
-    this.toast.info('Payout details coming soon.');
+  openPayoutDialog(): void {
+    this.payoutAccount$.pipe(take(1)).subscribe((payoutAccount) => {
+      this.payoutForm.patchValue({
+        type: payoutAccount.type,
+        bankName: payoutAccount.bankName ?? '',
+        accountNumber: payoutAccount.accountNumber ?? '',
+        instapayNumber: payoutAccount.instapayNumber ?? '',
+      });
+      this.updatePayoutValidators();
+      this.payoutDialogOpen = true;
+      this.cdr.markForCheck();
+    });
   }
 
-  onExportCsv(): void {
-    this.toast.info('CSV export coming soon.');
+  onPayoutTypeChange(): void {
+    this.updatePayoutValidators();
+    this.cdr.markForCheck();
   }
 
-  onUpdatePayout(): void {
-    this.toast.info('Payout account update coming soon.');
+  closePayoutDialog(): void {
+    this.payoutDialogOpen = false;
+    this.cdr.markForCheck();
+  }
+
+  private updatePayoutValidators(): void {
+    const type = this.payoutForm.get('type')?.value;
+    const bankName = this.payoutForm.get('bankName');
+    const accountNumber = this.payoutForm.get('accountNumber');
+    const instapayNumber = this.payoutForm.get('instapayNumber');
+    if (type === 'bank') {
+      bankName?.setValidators([Validators.required]);
+      accountNumber?.setValidators([Validators.required, Validators.minLength(8)]);
+      instapayNumber?.clearValidators();
+    } else {
+      bankName?.clearValidators();
+      accountNumber?.clearValidators();
+      instapayNumber?.setValidators([Validators.required, Validators.minLength(10)]);
+    }
+    bankName?.updateValueAndValidity();
+    accountNumber?.updateValueAndValidity();
+    instapayNumber?.updateValueAndValidity();
+  }
+
+  onSavePayout(): void {
+    if (this.payoutForm.invalid) return;
+    const v = this.payoutForm.getRawValue();
+    const payoutAccount = v.type === 'bank'
+      ? { type: 'bank' as const, bankName: v.bankName, accountNumber: v.accountNumber }
+      : { type: 'instapay' as const, instapayNumber: v.instapayNumber };
+    this.store.dispatch(updateMentorPayoutAccount({ payoutAccount }));
+    this.closePayoutDialog();
+    this.toast.success('Payout account updated successfully.');
+    this.cdr.markForCheck();
   }
 }

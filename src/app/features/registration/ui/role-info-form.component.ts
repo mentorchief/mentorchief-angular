@@ -7,7 +7,8 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
-export type RegistrationRole = 'mentee' | 'mentor' | null;
+import type { RegistrationRole } from '../../../core/models/registration.model';
+import { UserRole } from '../../../core/models/user.model';
 
 @Component({
   selector: 'mc-role-info-form',
@@ -26,15 +27,15 @@ export type RegistrationRole = 'mentee' | 'mentor' | null;
           <div class="grid md:grid-cols-2 gap-4">
             <button
               type="button"
-              (click)="roleChange.emit('mentee')"
-              [class]="selectedRole === 'mentee'
+              (click)="roleChange.emit(UserRole.Mentee)"
+              [class]="selectedRole === UserRole.Mentee
                 ? 'border-primary bg-accent'
                 : 'border-border bg-card'"
               class="p-6 rounded-lg border-2 transition-all text-left hover:border-primary/50"
             >
               <div class="flex flex-col items-center text-center space-y-3">
                 <div
-                  [class]="selectedRole === 'mentee'
+                  [class]="selectedRole === UserRole.Mentee
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-secondary text-secondary-foreground'"
                   class="w-16 h-16 rounded-full flex items-center justify-center text-2xl"
@@ -52,15 +53,15 @@ export type RegistrationRole = 'mentee' | 'mentor' | null;
 
             <button
               type="button"
-              (click)="roleChange.emit('mentor')"
-              [class]="selectedRole === 'mentor'
+              (click)="roleChange.emit(UserRole.Mentor)"
+              [class]="selectedRole === UserRole.Mentor
                 ? 'border-primary bg-accent'
                 : 'border-border bg-card'"
               class="p-6 rounded-lg border-2 transition-all text-left hover:border-primary/50"
             >
               <div class="flex flex-col items-center text-center space-y-3">
                 <div
-                  [class]="selectedRole === 'mentor'
+                  [class]="selectedRole === UserRole.Mentor
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-secondary text-secondary-foreground'"
                   class="w-16 h-16 rounded-full flex items-center justify-center text-2xl"
@@ -94,8 +95,9 @@ export type RegistrationRole = 'mentee' | 'mentor' | null;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RoleInfoFormComponent {
+  readonly UserRole = UserRole;
   @Input() selectedRole: RegistrationRole = null;
 
-  @Output() roleChange = new EventEmitter<'mentee' | 'mentor'>();
+  @Output() roleChange = new EventEmitter<UserRole.Mentee | UserRole.Mentor>();
   @Output() next = new EventEmitter<void>();
 }

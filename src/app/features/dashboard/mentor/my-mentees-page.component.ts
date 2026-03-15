@@ -7,13 +7,15 @@ import { Subject, takeUntil } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.service';
 import { ToastService } from '../../../shared/services/toast.service';
-import { selectMyMenteesPending, selectMyMenteesActive } from '../store/dashboard.selectors';
+import { selectAllUnifiedPending, selectMenteeUnreadCounts, selectMyMenteesActive } from '../store/dashboard.selectors';
 import { selectAuthUser } from '../../auth/store/auth.selectors';
+import { ROUTES } from '../../../core/routes';
 import { parseMenteeCapacity } from '../../../core/utils/mentor.utils';
 import { DEFAULT_MENTEE_CAPACITY } from '../../../core/constants';
 import { map } from 'rxjs';
-import { acceptMenteeRequest, removeMenteeFromList } from '../store/dashboard.actions';
+import { acceptMenteeRequest, acceptMentorshipRequest, declineMentorshipRequest, removeMenteeFromList } from '../store/dashboard.actions';
 import type { MenteeListItem } from '../../../core/models/dashboard.model';
+import type { UnifiedPendingItem } from '../store/dashboard.selectors';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 
 const ACTIVE_PAGE_SIZE = 10;
@@ -37,7 +39,7 @@ const ACTIVE_PAGE_SIZE = 10;
         </div>
         <div class="bg-card rounded-lg border border-border p-5">
           <div class="text-muted-foreground text-sm mb-1">Pending Requests</div>
-          <div class="text-2xl text-foreground font-semibold">{{ (pendingMentees$ | async)?.length ?? 0 }}</div>
+          <div class="text-2xl text-foreground font-semibold">{{ (pendingItems$ | async)?.length ?? 0 }}</div>
         </div>
         <div class="bg-card rounded-lg border border-border p-5">
           <div class="text-muted-foreground text-sm mb-1">Capacity</div>
@@ -45,33 +47,41 @@ const ACTIVE_PAGE_SIZE = 10;
         </div>
       </div>
 
-      <!-- Pending Requests -->
-      @if ((pendingMentees$ | async)?.length) {
+      <!-- Pending Requests (same data as mentor dashboard) -->
+      @if ((pendingItems$ | async)?.length) {
         <div class="mb-8">
           <h2 class="text-lg text-foreground mb-4">Pending Requests</h2>
           <div class="grid gap-4">
-            @for (mentee of (pendingMentees$ | async) ?? []; track mentee.id) {
+            @for (item of (pendingItems$ | async) ?? []; track item.id + item.source) {
               <div class="bg-card rounded-lg border border-amber-200 p-5">
                 <div class="flex items-center gap-4">
                   <div class="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
-                    <span class="text-primary-foreground font-medium">{{ getInitials(mentee.name) }}</span>
+                    <span class="text-primary-foreground font-medium">{{ getInitials(item.name) }}</span>
                   </div>
                   <div class="flex-1">
-                    <h3 class="text-foreground font-medium">{{ mentee.name }}</h3>
-                    <p class="text-muted-foreground text-sm">{{ mentee.email }}</p>
-                    <p class="text-muted-foreground text-xs mt-1">Requested: {{ mentee.plan }}</p>
+                    <h3 class="text-foreground font-medium">{{ item.name }}</h3>
+                    <p class="text-muted-foreground text-sm">{{ item.detail }}</p>
+                    <p class="text-muted-foreground text-xs mt-1">{{ item.source === 'request' ? 'Goal' : 'Requested' }}: {{ item.goalOrPlan }}</p>
                   </div>
+                  @if (item.latestReport) {
+                    <a
+                      [routerLink]="ROUTES.mentor.reportView(item.latestReport.id)"
+                      class="text-sm text-primary hover:underline shrink-0"
+                    >
+                      View latest report
+                    </a>
+                  }
                   <div class="flex gap-2">
                     <button
                       type="button"
-                      (click)="onAcceptMentee(mentee)"
+                      (click)="onAcceptItem(item)"
                       class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90"
                     >
                       Accept
                     </button>
                     <button
                       type="button"
-                      (click)="onDeclineMentee(mentee)"
+                      (click)="onDeclineItem(item)"
                       class="px-4 py-2 border border-border text-foreground rounded-md text-sm hover:bg-muted"
                     >
                       Decline
@@ -111,8 +121,15 @@ const ACTIVE_PAGE_SIZE = 10;
                 <tr class="border-b border-border last:border-0">
                   <td class="px-5 py-4">
                     <div class="flex items-center gap-3">
-                      <div class="w-10 h-10 bg-secondary rounded-full flex items-center justify-center">
-                        <span class="text-secondary-foreground text-sm font-medium">{{ getInitials(mentee.name) }}</span>
+                      <div class="relative">
+                        <div class="w-10 h-10 bg-secondary rounded-full flex items-center justify-center">
+                          <span class="text-secondary-foreground text-sm font-medium">{{ getInitials(mentee.name) }}</span>
+                        </div>
+                        @if (getUnreadCount(mentee) > 0) {
+                          <span class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-primary text-primary-foreground text-xs font-medium rounded-full">
+                            {{ getUnreadCount(mentee) > 99 ? '99+' : getUnreadCount(mentee) }}
+                          </span>
+                        }
                       </div>
                       <div>
                         <p class="text-foreground text-sm font-medium">{{ mentee.name }}</p>
@@ -125,7 +142,8 @@ const ACTIVE_PAGE_SIZE = 10;
                   <td class="px-5 py-4">
                     <div class="flex flex-wrap items-center gap-2">
                       <a
-                        routerLink="/dashboard/mentor/messages"
+                        [routerLink]="ROUTES.mentor.messages"
+                        [queryParams]="{ mentee: mentee.name }"
                         class="px-3 py-1.5 border border-border text-foreground rounded-md text-sm hover:bg-muted no-underline inline-block"
                       >
                         Message
@@ -165,13 +183,16 @@ export class MyMenteesPageComponent implements OnInit, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
 
+  readonly ROUTES = ROUTES;
   readonly defaultCapacity = DEFAULT_MENTEE_CAPACITY;
-  readonly pendingMentees$ = this.store.select(selectMyMenteesPending);
+  readonly pendingItems$ = this.store.select(selectAllUnifiedPending);
   readonly activeMentees$ = this.store.select(selectMyMenteesActive);
+  readonly unreadCounts$ = this.store.select(selectMenteeUnreadCounts);
   readonly mentorCapacity$ = this.store.select(selectAuthUser).pipe(
     map((u) => parseMenteeCapacity(u?.menteeCapacity)),
   );
   activeMenteesList: MenteeListItem[] = [];
+  unreadCounts: { byId: Record<number, number>; byName: Record<string, number> } = { byId: {}, byName: {} };
   activeSearchQuery = '';
   readonly activePageSize = ACTIVE_PAGE_SIZE;
   activePage = 1;
@@ -181,6 +202,14 @@ export class MyMenteesPageComponent implements OnInit, OnDestroy {
       this.activeMenteesList = list;
       this.cdr.markForCheck();
     });
+    this.unreadCounts$.pipe(takeUntil(this.destroy$)).subscribe((u) => {
+      this.unreadCounts = u;
+      this.cdr.markForCheck();
+    });
+  }
+
+  getUnreadCount(mentee: MenteeListItem): number {
+    return this.unreadCounts.byId[mentee.id] ?? this.unreadCounts.byName[mentee.name] ?? 0;
   }
 
   ngOnDestroy(): void {
@@ -228,22 +257,32 @@ export class MyMenteesPageComponent implements OnInit, OnDestroy {
     return new Date() >= end;
   }
 
-  onAcceptMentee(mentee: MenteeListItem): void {
-    this.store.dispatch(acceptMenteeRequest({ menteeId: mentee.id }));
-    this.toast.success(`${mentee.name} has been added to your mentees.`);
+  onAcceptItem(item: UnifiedPendingItem): void {
+    if (item.source === 'request') {
+      this.store.dispatch(acceptMentorshipRequest({
+        request: { id: item.id, name: item.name, goal: item.goalOrPlan, message: item.detail, rating: item.rating },
+      }));
+    } else {
+      this.store.dispatch(acceptMenteeRequest({ menteeId: item.id }));
+    }
+    this.toast.success(`${item.name} has been added to your mentees.`);
   }
 
-  async onDeclineMentee(mentee: MenteeListItem): Promise<void> {
+  async onDeclineItem(item: UnifiedPendingItem): Promise<void> {
     const confirmed = await this.confirmDialog.confirm({
       title: 'Decline request',
-      message: `Are you sure you want to decline ${mentee.name}'s mentorship request? They will be notified.`,
+      message: `Are you sure you want to decline ${item.name}'s mentorship request? They will be notified.`,
       confirmLabel: 'Yes, decline',
       cancelLabel: 'Keep request',
       variant: 'danger',
     });
     if (confirmed) {
-      this.store.dispatch(removeMenteeFromList({ menteeId: mentee.id }));
-      this.toast.success(`Request from ${mentee.name} has been declined.`);
+      if (item.source === 'request') {
+        this.store.dispatch(declineMentorshipRequest({ requestId: item.id }));
+      } else {
+        this.store.dispatch(removeMenteeFromList({ menteeId: item.id }));
+      }
+      this.toast.success(`Request from ${item.name} has been declined.`);
     }
   }
 }

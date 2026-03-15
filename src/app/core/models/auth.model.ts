@@ -1,9 +1,12 @@
-import type { User } from './user.model';
+import { UserRole } from './user.model';
 
+/**
+ * Auth slice: single source of truth for SESSION only.
+ * Stores only userId — full user is selected from users slice via selectAuthUser.
+ * No duplication of user data.
+ */
 export interface AuthState {
-  user: User | null;
-  isAuthenticated: boolean;
-  isRegistered: boolean;
+  userId: string | null;
   loading: boolean;
   error: string | null;
 }
@@ -17,6 +20,6 @@ export interface SignupPayload {
   name: string;
   email: string;
   password: string;
-  role: 'mentee' | 'mentor';
+  role: Exclude<UserRole, UserRole.Admin>;
 }
 

@@ -17,8 +17,12 @@ export interface MentorPlan {
   price: string;
 }
 
+import type { UserRole } from './user.model';
+
+export type RegistrationRole = UserRole.Mentee | UserRole.Mentor | null;
+
 export interface RegistrationData {
-  role: 'mentee' | 'mentor' | null;
+  role: RegistrationRole;
   firstName: string;
   lastName: string;
   phone: string;

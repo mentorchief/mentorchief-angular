@@ -6,9 +6,11 @@ import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { selectMyMentees } from '../store/dashboard.selectors';
-import { addMenteeReport } from '../store/dashboard.actions';
+import { addMenteeReport, markMenteeCompleted } from '../store/dashboard.actions';
 import { ToastService } from '../../../shared/services/toast.service';
 import type { MenteeListItem } from '../../../core/models/dashboard.model';
+import { ROLE_DISPLAY_LABELS, UserRole } from '../../../core/models/user.model';
+import { ROUTES } from '../../../core/routes';
 
 @Component({
   selector: 'mc-mentor-report-form-page',
@@ -17,7 +19,7 @@ import type { MenteeListItem } from '../../../core/models/dashboard.model';
   template: `
     <div class="p-6 lg:p-8">
       <div class="mb-8">
-        <a [routerLink]="['/dashboard/mentor/my-mentees']" class="text-sm text-primary hover:underline no-underline">← My Mentees</a>
+        <a [routerLink]="ROUTES.mentor.myMentees" class="text-sm text-primary hover:underline no-underline">← My Mentees</a>
         <h1 class="text-2xl lg:text-3xl font-semibold text-foreground mt-2">End Mentorship & Submit Report</h1>
         @if (mentee) {
           <p class="text-muted-foreground mt-1.5 text-sm">Write a formal report for {{ mentee.name }}. This will be shared with the mentee and may be shared with future mentors.</p>
@@ -41,7 +43,7 @@ import type { MenteeListItem } from '../../../core/models/dashboard.model';
           </section>
 
           <section>
-            <label class="block text-sm font-medium text-foreground mb-1.5">Rating (1–5)</label>
+            <label class="block text-sm font-medium text-foreground mb-1.5">Rating (1–5) <span class="text-destructive">*</span></label>
             <div class="flex gap-2">
               @for (star of [1,2,3,4,5]; track star) {
                 <button
@@ -58,10 +60,13 @@ import type { MenteeListItem } from '../../../core/models/dashboard.model';
                 </button>
               }
             </div>
+            @if (form.get('rating')?.invalid && form.get('rating')?.touched) {
+              <p class="text-destructive text-xs mt-1">Rating is required.</p>
+            }
           </section>
 
           <section>
-            <label for="behaviour" class="block text-sm font-medium text-foreground mb-1.5">Behaviour &amp; Professionalism</label>
+            <label for="behaviour" class="block text-sm font-medium text-foreground mb-1.5">Behaviour &amp; Professionalism <span class="text-destructive">*</span></label>
             <textarea
               id="behaviour"
               formControlName="behaviour"
@@ -69,10 +74,13 @@ import type { MenteeListItem } from '../../../core/models/dashboard.model';
               class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Assessment of professionalism and conduct."
             ></textarea>
+            @if (form.get('behaviour')?.invalid && form.get('behaviour')?.touched) {
+              <p class="text-destructive text-xs mt-1">Behaviour is required.</p>
+            }
           </section>
 
           <section>
-            <label for="strengths" class="block text-sm font-medium text-foreground mb-1.5">Strengths</label>
+            <label for="strengths" class="block text-sm font-medium text-foreground mb-1.5">Strengths <span class="text-destructive">*</span></label>
             <textarea
               id="strengths"
               formControlName="strengths"
@@ -80,10 +88,13 @@ import type { MenteeListItem } from '../../../core/models/dashboard.model';
               class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="One strength per line."
             ></textarea>
+            @if (form.get('strengths')?.invalid && form.get('strengths')?.touched) {
+              <p class="text-destructive text-xs mt-1">Strengths are required.</p>
+            }
           </section>
 
           <section>
-            <label for="weaknesses" class="block text-sm font-medium text-foreground mb-1.5">Areas of Improvement</label>
+            <label for="weaknesses" class="block text-sm font-medium text-foreground mb-1.5">Areas of Improvement <span class="text-destructive">*</span></label>
             <textarea
               id="weaknesses"
               formControlName="weaknesses"
@@ -91,10 +102,13 @@ import type { MenteeListItem } from '../../../core/models/dashboard.model';
               class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="One point per line."
             ></textarea>
+            @if (form.get('weaknesses')?.invalid && form.get('weaknesses')?.touched) {
+              <p class="text-destructive text-xs mt-1">Areas of improvement are required.</p>
+            }
           </section>
 
           <section>
-            <label for="areasToDevelop" class="block text-sm font-medium text-foreground mb-1.5">Development Priorities</label>
+            <label for="areasToDevelop" class="block text-sm font-medium text-foreground mb-1.5">Development Priorities <span class="text-destructive">*</span></label>
             <textarea
               id="areasToDevelop"
               formControlName="areasToDevelop"
@@ -102,10 +116,13 @@ import type { MenteeListItem } from '../../../core/models/dashboard.model';
               class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="One priority per line."
             ></textarea>
+            @if (form.get('areasToDevelop')?.invalid && form.get('areasToDevelop')?.touched) {
+              <p class="text-destructive text-xs mt-1">Development priorities are required.</p>
+            }
           </section>
 
           <section>
-            <label for="recommendations" class="block text-sm font-medium text-foreground mb-1.5">Recommendations</label>
+            <label for="recommendations" class="block text-sm font-medium text-foreground mb-1.5">Recommendations <span class="text-destructive">*</span></label>
             <textarea
               id="recommendations"
               formControlName="recommendations"
@@ -113,6 +130,9 @@ import type { MenteeListItem } from '../../../core/models/dashboard.model';
               class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Next steps or recommendations for future mentors."
             ></textarea>
+            @if (form.get('recommendations')?.invalid && form.get('recommendations')?.touched) {
+              <p class="text-destructive text-xs mt-1">Recommendations are required.</p>
+            }
           </section>
 
           <div class="flex gap-3 pt-4">
@@ -139,6 +159,7 @@ import type { MenteeListItem } from '../../../core/models/dashboard.model';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MentorReportFormPageComponent implements OnInit {
+  readonly ROUTES = ROUTES;
   private readonly store = inject(Store<AppState>);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -151,19 +172,19 @@ export class MentorReportFormPageComponent implements OnInit {
 
   form: FormGroup = this.fb.group({
     summary: ['', Validators.required],
-    rating: [null as number | null],
-    behaviour: [''],
-    strengths: [''],
-    weaknesses: [''],
-    areasToDevelop: [''],
-    recommendations: [''],
+    rating: [null as number | null, Validators.required],
+    behaviour: ['', Validators.required],
+    strengths: ['', Validators.required],
+    weaknesses: ['', Validators.required],
+    areasToDevelop: ['', Validators.required],
+    recommendations: ['', Validators.required],
   });
 
   ngOnInit(): void {
     const menteeId = this.route.snapshot.paramMap.get('menteeId');
     const id = menteeId ? parseInt(menteeId, 10) : NaN;
     if (Number.isNaN(id)) {
-      this.router.navigate(['/dashboard/mentor/my-mentees']);
+      this.router.navigate([ROUTES.mentor.myMentees]);
       return;
     }
     this.store
@@ -172,7 +193,7 @@ export class MentorReportFormPageComponent implements OnInit {
       .subscribe((list) => {
         const m = list.find((x) => x.id === id);
         if (!m || m.status !== 'active') {
-          this.router.navigate(['/dashboard/mentor/my-mentees']);
+          this.router.navigate([ROUTES.mentor.myMentees]);
           return;
         }
         this.mentee = m;
@@ -196,7 +217,7 @@ export class MentorReportFormPageComponent implements OnInit {
       addMenteeReport({
         menteeId: m.id,
         mentorId: 1,
-        mentorName: 'Mentor',
+        mentorName: ROLE_DISPLAY_LABELS[UserRole.Mentor],
         summary: v.summary,
         rating: v.rating ?? undefined,
         behaviour: v.behaviour || undefined,
@@ -206,7 +227,8 @@ export class MentorReportFormPageComponent implements OnInit {
         recommendations: v.recommendations || undefined,
       }),
     );
+    this.store.dispatch(markMenteeCompleted({ menteeId: m.id }));
     this.toast.success(`Report saved and ${m.name}'s mentorship marked as completed.`);
-    this.router.navigate(['/dashboard/mentor/my-mentees']);
+    this.router.navigate([ROUTES.mentor.myMentees]);
   }
 }

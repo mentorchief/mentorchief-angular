@@ -10,6 +10,7 @@ import type { AppState } from '../../../store/app.state';
 import { selectAuthUser } from '../../auth/store/auth.selectors';
 import { selectMentorProfileReviews } from '../../dashboard/store/dashboard.selectors';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { UserRole } from '../../../core/models/user.model';
 import { ToastService } from '../../../shared/services/toast.service';
 import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.service';
 
@@ -142,7 +143,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
               </div>
 
               @if (user$ | async; as user) {
-                @if (user.role === 'mentee') {
+                @if (user.role === UserRole.Mentee) {
                   @if (hasPendingRequest) {
                     <div class="space-y-3">
                       <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-center">
@@ -164,7 +165,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                     </button>
                   }
                 } @else {
-                  @if (user.role === 'mentor') {
+                  @if (user.role === UserRole.Mentor) {
                     <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                       You’re signed in as a mentor. Mentors can’t subscribe to other mentors. Switch to a mentee account if you want to request mentorship.
                     </div>
@@ -248,6 +249,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MentorProfilePageComponent {
+  readonly UserRole = UserRole;
   private readonly route = inject(ActivatedRoute);
   private readonly store = inject(Store<AppState>);
   private readonly toast = inject(ToastService);

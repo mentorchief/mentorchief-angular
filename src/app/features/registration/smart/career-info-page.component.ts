@@ -6,7 +6,9 @@ import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { selectRegistrationData } from '../store/registration.selectors';
+import { UserRole } from '../../../core/models/user.model';
 import { updateData, setCurrentStep } from '../store/registration.actions';
+import { ROUTES } from '../../../core/routes';
 
 interface CareerFormData {
   jobTitle: string;
@@ -121,7 +123,7 @@ export class CareerInfoPageComponent {
 
   constructor() {
     this.store.select(selectRegistrationData).pipe(take(1)).subscribe((data) => {
-      this.isMentor = data.role === 'mentor';
+      this.isMentor = data.role === UserRole.Mentor;
       this.formData = {
         jobTitle: data.jobTitle,
         company: data.company,
@@ -147,14 +149,14 @@ export class CareerInfoPageComponent {
   onBack(): void {
     this.store.dispatch(updateData({ updates: this.formData }));
     this.store.dispatch(setCurrentStep({ step: 2 }));
-    void this.router.navigate(['/auth/registration-steps/personal-info']);
+    void this.router.navigate([ROUTES.registration.personalInfo]);
   }
 
   onNext(): void {
     if (this.validate()) {
       this.store.dispatch(updateData({ updates: this.formData }));
       this.store.dispatch(setCurrentStep({ step: 4 }));
-      void this.router.navigate(['/auth/registration-steps/biography']);
+      void this.router.navigate([ROUTES.registration.biography]);
     }
   }
 }

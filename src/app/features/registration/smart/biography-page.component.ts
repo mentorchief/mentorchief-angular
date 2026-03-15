@@ -7,7 +7,9 @@ import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { selectRegistrationData } from '../store/registration.selectors';
+import { UserRole } from '../../../core/models/user.model';
 import { updateData, setCurrentStep } from '../store/registration.actions';
+import { ROUTES } from '../../../core/routes';
 
 interface BioFormData {
   bio: string;
@@ -157,7 +159,7 @@ export class BiographyPageComponent {
 
   constructor() {
     this.store.select(selectRegistrationData).pipe(take(1)).subscribe((data) => {
-      this.isMentor = data.role === 'mentor';
+      this.isMentor = data.role === UserRole.Mentor;
       this.formData = {
         bio: data.bio,
         skills: [...data.skills],
@@ -204,7 +206,7 @@ export class BiographyPageComponent {
   onBack(): void {
     this.store.dispatch(updateData({ updates: this.formData }));
     this.store.dispatch(setCurrentStep({ step: 3 }));
-    void this.router.navigate(['/auth/registration-steps/career-info']);
+    void this.router.navigate([ROUTES.registration.careerInfo]);
   }
 
   onNext(): void {
@@ -212,9 +214,9 @@ export class BiographyPageComponent {
       this.store.dispatch(updateData({ updates: this.formData }));
       this.store.dispatch(setCurrentStep({ step: 5 }));
       if (this.isMentor) {
-        void this.router.navigate(['/auth/registration-steps/preference']);
+        void this.router.navigate([ROUTES.registration.preference]);
       } else {
-        void this.router.navigate(['/auth/registration-steps/preview']);
+        void this.router.navigate([ROUTES.registration.preview]);
       }
     }
   }

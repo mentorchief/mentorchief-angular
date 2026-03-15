@@ -7,7 +7,8 @@ import { Observable } from 'rxjs';
 import type { AppState } from '../../store/app.state';
 import { selectAuthUser, selectIsAuthenticated } from '../../features/auth/store/auth.selectors';
 import { logout } from '../../features/auth/store/auth.actions';
-import type { User } from '../../core/models/user.model';
+import { UserRole, type User } from '../../core/models/user.model';
+import { ROUTES } from '../../core/routes';
 
 @Component({
   selector: 'mc-navbar',
@@ -18,7 +19,7 @@ import type { User } from '../../core/models/user.model';
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex items-center justify-between h-16">
           <!-- Logo -->
-          <a routerLink="/" class="flex items-center gap-2.5 no-underline">
+          <a [routerLink]="ROUTES.home" class="flex items-center gap-2.5 no-underline">
             <div class="w-9 h-9 bg-primary rounded-md flex items-center justify-center">
               <span class="text-white font-bold text-sm">M</span>
             </div>
@@ -29,10 +30,10 @@ import type { User } from '../../core/models/user.model';
 
           <!-- Desktop Navigation -->
           <div class="hidden md:flex items-center gap-8">
-            <a routerLink="/browse" class="text-muted-foreground hover:text-foreground transition-colors no-underline">
+            <a [routerLink]="ROUTES.browse" class="text-muted-foreground hover:text-foreground transition-colors no-underline">
               Find Mentors
             </a>
-            <a routerLink="/how-it-works" class="text-muted-foreground hover:text-foreground transition-colors no-underline">
+            <a [routerLink]="ROUTES.howItWorks" class="text-muted-foreground hover:text-foreground transition-colors no-underline">
               How It Works
             </a>
           </div>
@@ -92,10 +93,10 @@ import type { User } from '../../core/models/user.model';
                 </div>
               }
             } @else {
-              <a routerLink="/login" class="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors no-underline">
+              <a [routerLink]="ROUTES.login" class="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors no-underline">
                 Log in
               </a>
-              <a routerLink="/signup" class="px-5 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity no-underline">
+              <a [routerLink]="ROUTES.signup" class="px-5 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity no-underline">
                 Get Started
               </a>
             }
@@ -113,10 +114,10 @@ import type { User } from '../../core/models/user.model';
         <!-- Mobile Menu -->
         @if (mobileOpen) {
           <div class="md:hidden pb-4 border-t border-border pt-4 flex flex-col gap-3">
-            <a routerLink="/browse" class="px-3 py-2 text-muted-foreground hover:text-foreground no-underline" (click)="mobileOpen = false">
+            <a [routerLink]="ROUTES.browse" class="px-3 py-2 text-muted-foreground hover:text-foreground no-underline" (click)="mobileOpen = false">
               Find Mentors
             </a>
-            <a routerLink="/how-it-works" class="px-3 py-2 text-muted-foreground hover:text-foreground no-underline" (click)="mobileOpen = false">
+            <a [routerLink]="ROUTES.howItWorks" class="px-3 py-2 text-muted-foreground hover:text-foreground no-underline" (click)="mobileOpen = false">
               How It Works
             </a>
             <hr class="border-border" />
@@ -142,10 +143,10 @@ import type { User } from '../../core/models/user.model';
                 </button>
               }
             } @else {
-              <a routerLink="/login" class="px-3 py-2 text-muted-foreground no-underline" (click)="mobileOpen = false">
+              <a [routerLink]="ROUTES.login" class="px-3 py-2 text-muted-foreground no-underline" (click)="mobileOpen = false">
                 Log in
               </a>
-              <a routerLink="/signup" class="mx-3 px-5 py-2 bg-primary text-primary-foreground rounded-md text-center no-underline" (click)="mobileOpen = false">
+              <a [routerLink]="ROUTES.signup" class="mx-3 px-5 py-2 bg-primary text-primary-foreground rounded-md text-center no-underline" (click)="mobileOpen = false">
                 Get Started
               </a>
             }
@@ -162,6 +163,7 @@ export class NavbarComponent {
   readonly isAuthenticated$: Observable<boolean> = this.store.select(selectIsAuthenticated);
   readonly user$: Observable<User | null> = this.store.select(selectAuthUser);
 
+  readonly ROUTES = ROUTES;
   dropdownOpen = false;
   mobileOpen = false;
 
@@ -175,13 +177,15 @@ export class NavbarComponent {
   }
 
   getDashboardPath(user: User): string {
-    if (user.role === 'admin') return '/dashboard/admin';
-    if (user.role === 'mentor') return '/dashboard/mentor';
-    return '/dashboard/mentee';
+    if (user.role === UserRole.Admin) return ROUTES.admin.dashboard;
+    if (user.role === UserRole.Mentor) return ROUTES.mentor.dashboard;
+    return ROUTES.mentee.dashboard;
   }
 
   getProfilePath(user: User): string {
-    return `${this.getDashboardPath(user)}/settings`;
+    if (user.role === UserRole.Admin) return ROUTES.admin.settings;
+    if (user.role === UserRole.Mentor) return ROUTES.mentor.settings;
+    return ROUTES.mentee.settings;
   }
 
   onLogout(): void {
