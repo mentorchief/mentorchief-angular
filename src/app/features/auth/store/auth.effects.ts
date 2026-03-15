@@ -17,6 +17,7 @@ import {
   updateProfile,
 } from './auth.actions';
 import { resetSession } from '../../../store/session/session.actions';
+import { addUser, updateUserProfile } from '../../../store/users/users.actions';
 import { ROUTES } from '../../../core/routes';
 import { AuthApiService } from '../../../core/services/auth-api.service';
 import { selectAuthUser } from './auth.selectors';
@@ -29,68 +30,85 @@ export class AuthEffects {
   private readonly router = inject(Router);
   private readonly store = inject(Store);
 
+  /** Login: fetch full user from Supabase, hydrate users store, then dispatch loginSuccess */
   readonly login$ = createEffect(() =>
     this.actions$.pipe(
       ofType(login),
       switchMap(({ payload }) =>
         this.authApi.login(payload).pipe(
+          tap((user) => this.store.dispatch(addUser({ user }))),
           map((user) => loginSuccess({ userId: user.id })),
           catchError((error: unknown) =>
-            of(
-              loginFailure({
-                error: error instanceof Error ? error.message : 'Login failed.',
-              }),
-            ),
+            of(loginFailure({ error: error instanceof Error ? error.message : 'Login failed.' })),
           ),
         ),
       ),
     ),
   );
 
+  /** Signup: fetch full user from Supabase, hydrate users store, then dispatch signupSuccess */
   readonly signup$ = createEffect(() =>
     this.actions$.pipe(
       ofType(signup),
       switchMap(({ payload }) =>
         this.authApi.signup(payload).pipe(
+          tap((user) => this.store.dispatch(addUser({ user }))),
           map((user) => signupSuccess({ userId: user.id })),
           catchError((error: unknown) =>
-            of(
-              signupFailure({
-                error: error instanceof Error ? error.message : 'Signup failed.',
-              }),
-            ),
+            of(signupFailure({ error: error instanceof Error ? error.message : 'Signup failed.' })),
           ),
         ),
       ),
     ),
   );
 
+  /** App init: restore session from Supabase, load profile, hydrate users store */
   readonly loadCurrentUser$ = createEffect(() =>
     this.actions$.pipe(
       ofType(loadCurrentUser),
       switchMap(() =>
         this.authApi.loadCurrentUser().pipe(
-          map((userId) => loadCurrentUserSuccess({ userId })),
+          switchMap((userId) => {
+            if (!userId) return of(loadCurrentUserSuccess({ userId: null }));
+            return this.authApi.getProfileById(userId).pipe(
+              tap((user) => { if (user) this.store.dispatch(addUser({ user })); }),
+              map(() => loadCurrentUserSuccess({ userId })),
+            );
+          }),
           catchError(() => of(loadCurrentUserSuccess({ userId: null }))),
         ),
       ),
     ),
   );
 
+  /** updateProfile: persist to Supabase then update users store */
   readonly updateProfile$ = createEffect(
     () =>
       this.actions$.pipe(
         ofType(updateProfile),
-        switchMap(({ updates }) => this.authApi.updateProfile(updates)),
+        switchMap(({ updates }) =>
+          this.authApi.updateProfile(updates).pipe(
+            tap((user) => {
+              if (user) this.store.dispatch(updateUserProfile({ userId: user.id, updates }));
+            }),
+          ),
+        ),
       ),
     { dispatch: false },
   );
 
+  /** markRegistered: persist to Supabase then update users store */
   readonly markRegistered$ = createEffect(
     () =>
       this.actions$.pipe(
         ofType(markRegistered),
-        switchMap(({ updates }) => this.authApi.markRegistered(updates)),
+        switchMap(({ updates }) =>
+          this.authApi.markRegistered(updates).pipe(
+            tap((user) => {
+              if (user) this.store.dispatch(updateUserProfile({ userId: user.id, updates: { registered: true, ...updates } }));
+            }),
+          ),
+        ),
       ),
     { dispatch: false },
   );
@@ -124,11 +142,8 @@ export class AuthEffects {
             else void this.router.navigate([ROUTES.mentor.dashboard]);
           } else {
             const returnUrl = this.getSafeReturnUrl();
-            if (returnUrl) {
-              void this.router.navigateByUrl(returnUrl);
-            } else {
-              void this.router.navigate([ROUTES.mentee.dashboard]);
-            }
+            if (returnUrl) void this.router.navigateByUrl(returnUrl);
+            else void this.router.navigate([ROUTES.mentee.dashboard]);
           }
         }),
       ),
@@ -152,18 +167,11 @@ export class AuthEffects {
               else void this.router.navigate([ROUTES.mentor.dashboard]);
             } else {
               const returnUrl = this.getSafeReturnUrl();
-              if (returnUrl) {
-                void this.router.navigateByUrl(returnUrl);
-              } else {
-                void this.router.navigate([ROUTES.mentee.dashboard]);
-              }
+              if (returnUrl) void this.router.navigateByUrl(returnUrl);
+              else void this.router.navigate([ROUTES.mentee.dashboard]);
             }
           } else {
-            const signupTemp = { name: user.name, role: user.role };
-            sessionStorage.setItem(
-              'mentorchief_signup_temp',
-              JSON.stringify(signupTemp),
-            );
+            sessionStorage.setItem('mentorchief_signup_temp', JSON.stringify({ name: user.name, role: user.role }));
             void this.router.navigate([ROUTES.registration.roleInfo]);
           }
         }),
@@ -171,14 +179,10 @@ export class AuthEffects {
     { dispatch: false },
   );
 
-  /** Return URL from current route if safe for mentee (mentor profile/request only). */
   private getSafeReturnUrl(): string | null {
     const urlTree = this.router.parseUrl(this.router.url);
     const returnUrl = urlTree.queryParams['returnUrl'];
-    if (typeof returnUrl !== 'string' || !returnUrl.startsWith('/mentor/') || returnUrl.includes('..')) {
-      return null;
-    }
+    if (typeof returnUrl !== 'string' || !returnUrl.startsWith('/mentor/') || returnUrl.includes('..')) return null;
     return returnUrl;
   }
 }
-
