@@ -140,7 +140,7 @@ export class CareerInfoPageComponent {
     if (!this.formData.company.trim()) {
       this.errors['company'] = this.isMentor ? 'Company is required' : 'Organization is required';
     }
-    if (!this.formData.yearsOfExperience) {
+    if (this.formData.yearsOfExperience === '' || this.formData.yearsOfExperience === null || this.formData.yearsOfExperience === undefined) {
       this.errors['yearsOfExperience'] = 'This field is required';
     }
     return Object.keys(this.errors).length === 0;
