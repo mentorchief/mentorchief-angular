@@ -147,9 +147,9 @@ export class AuthEffects {
               void this.router.navigate([ROUTES.admin.dashboard]);
             } else if (user.role === UserRole.Mentor) {
               const status = user.mentorApprovalStatus ?? 'approved';
-              if (status === MentorApprovalStatus.Pending) void this.router.navigate(['/dashboard/mentor/pending']);
-              else if (status === MentorApprovalStatus.Rejected) void this.router.navigate(['/dashboard/mentor/rejected']);
-              else void this.router.navigate(['/dashboard/mentor']);
+              if (status === MentorApprovalStatus.Pending) void this.router.navigate([ROUTES.mentor.pending]);
+              else if (status === MentorApprovalStatus.Rejected) void this.router.navigate([ROUTES.mentor.rejected]);
+              else void this.router.navigate([ROUTES.mentor.dashboard]);
             } else {
               const returnUrl = this.getSafeReturnUrl();
               if (returnUrl) {

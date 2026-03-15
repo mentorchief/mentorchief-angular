@@ -6,6 +6,7 @@ import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { selectMyMentees } from '../store/dashboard.selectors';
+import { selectAuthUserId } from '../../auth/store/auth.selectors';
 import { addMenteeReport, markMenteeCompleted } from '../store/dashboard.actions';
 import { ToastService } from '../../../shared/services/toast.service';
 import type { MenteeListItem } from '../../../core/models/dashboard.model';
@@ -168,6 +169,7 @@ export class MentorReportFormPageComponent implements OnInit {
   private readonly cdr = inject(ChangeDetectorRef);
 
   mentee: MenteeListItem | null = null;
+  mentorUserId: string | null = null;
   submitting = false;
 
   form: FormGroup = this.fb.group({
@@ -181,6 +183,9 @@ export class MentorReportFormPageComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    this.store.select(selectAuthUserId).pipe(take(1)).subscribe((id) => {
+      this.mentorUserId = id;
+    });
     const menteeId = this.route.snapshot.paramMap.get('menteeId');
     const id = menteeId ? parseInt(menteeId, 10) : NaN;
     if (Number.isNaN(id)) {
@@ -215,8 +220,8 @@ export class MentorReportFormPageComponent implements OnInit {
         : undefined;
     this.store.dispatch(
       addMenteeReport({
-        menteeId: m.id,
-        mentorId: 1,
+        menteeId: String(m.id),
+        mentorId: this.mentorUserId ?? '',
         mentorName: ROLE_DISPLAY_LABELS[UserRole.Mentor],
         summary: v.summary,
         rating: v.rating ?? undefined,

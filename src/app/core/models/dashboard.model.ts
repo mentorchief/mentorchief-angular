@@ -188,7 +188,7 @@ export interface PastMentorSummary {
 /** Mentee review for a mentor (after subscription completed) */
 
 export interface MentorReview {
-  mentorId: number;
+  mentorId: string;
   rating: number;
   comment: string;
   submittedAt: string;
@@ -207,8 +207,8 @@ export interface MentorProfileReview {
 
 export interface MenteeReport {
   id: number;
-  menteeId: number;
-  mentorId: number;
+  menteeId: string;
+  mentorId: string;
   mentorName: string;
   createdAt: string;
   summary: string;

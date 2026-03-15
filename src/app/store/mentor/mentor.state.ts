@@ -9,6 +9,8 @@ import type {
 } from '../../core/models/dashboard.model';
 
 export interface MentorState {
+  loading: boolean;
+  error: string | null;
   stats: MentorStat[];
   pendingRequests: PendingMentorshipRequest[];
   activeMentees: ActiveMenteeSummary[];
@@ -32,6 +34,8 @@ export const defaultNotificationSettings: MentorNotificationSetting[] = [
 ];
 
 export const mentorInitialState: MentorState = {
+  loading: false,
+  error: null,
   stats: [],
   pendingRequests: [],
   activeMentees: [],

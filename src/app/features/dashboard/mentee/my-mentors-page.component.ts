@@ -405,7 +405,7 @@ export class MyMentorsPageComponent implements OnInit, OnDestroy {
     const mentor = this.reviewModalMentor;
     const rating = this.reviewRating;
     if (!mentor || rating < 1) return;
-    this.store.dispatch(submitMentorReview({ mentorId: mentor.id, rating, comment: this.reviewComment.trim() }));
+    this.store.dispatch(submitMentorReview({ mentorId: String(mentor.id), rating, comment: this.reviewComment.trim() }));
     this.toast.success(`Thanks! Your review for ${mentor.name} has been submitted.`);
     this.closeReviewModal();
   }

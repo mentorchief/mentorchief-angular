@@ -3,8 +3,8 @@ import type { MenteeReport, MentorProfileReview } from '../../core/models/dashbo
 export const initialMenteeReports: MenteeReport[] = [
   {
     id: 1,
-    menteeId: 1,
-    mentorId: 2,
+    menteeId: '1',
+    mentorId: '2',
     mentorName: 'David Lee',
     createdAt: '2025-12-15T14:00:00.000Z',
     summary: 'Strong progress over our six-month mentorship. The mentee showed clear growth in product thinking and stakeholder communication. Happy to recommend for PM roles.',
@@ -17,8 +17,8 @@ export const initialMenteeReports: MenteeReport[] = [
   },
   {
     id: 2,
-    menteeId: 1,
-    mentorId: 3,
+    menteeId: '1',
+    mentorId: '3',
     mentorName: 'Priya Sharma',
     createdAt: '2025-08-20T10:30:00.000Z',
     summary: 'Completed a focused UX/portfolio mentorship. The mentee improved their portfolio structure and presentation significantly. They are ready to apply to mid-level design roles.',
@@ -31,8 +31,8 @@ export const initialMenteeReports: MenteeReport[] = [
   },
   {
     id: 3,
-    menteeId: 2,
-    mentorId: 1,
+    menteeId: '2',
+    mentorId: '1',
     mentorName: 'Sarah Chen',
     createdAt: '2026-01-10T12:00:00.000Z',
     summary: 'Emma made great progress on senior role preparation. Strong analytical skills and clear communication. Recommended next: practice executive-level storytelling and conflict resolution.',

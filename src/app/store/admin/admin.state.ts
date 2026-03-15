@@ -11,6 +11,8 @@ import type {
 } from '../../core/models/dashboard.model';
 
 export interface AdminState {
+  loading: boolean;
+  error: string | null;
   stats: AdminStat[];
   pendingActions: PendingAction[];
   recentActivities: RecentActivity[];
@@ -25,6 +27,8 @@ export interface AdminState {
 }
 
 export const adminInitialState: AdminState = {
+  loading: false,
+  error: null,
   stats: [],
   pendingActions: [],
   recentActivities: [],

@@ -330,7 +330,7 @@ export const selectMenteeReportsWithMenteeNames = createSelector(
   (reports, mentees, users) =>
     reports.map((r) => ({
       ...r,
-      menteeName: mentees.find((m) => m.id === r.menteeId)?.name ?? users.find((u) => u.id === String(r.menteeId))?.name ?? `Mentee #${r.menteeId}`,
+      menteeName: mentees.find((m) => String(m.id) === r.menteeId)?.name ?? users.find((u) => u.id === r.menteeId)?.name ?? `Mentee #${r.menteeId}`,
     })),
 );
 
@@ -338,14 +338,14 @@ export const selectMenteeReportsWithMenteeNames = createSelector(
 export const selectMenteeReportsForCurrentMentee = createSelector(
   selectAuthUser,
   selectMenteeReports,
-  (user, reports) => (user ? reports.filter((r) => Number(user.id) === r.menteeId) : []),
+  (user, reports) => (user ? reports.filter((r) => user.id === r.menteeId) : []),
 );
 
 /** Mentor: only reports written by the current user. */
 export const selectMenteeReportsForCurrentMentor = createSelector(
   selectAuthUser,
   selectMenteeReportsWithMenteeNames,
-  (user, reports) => (user ? reports.filter((r) => Number(user.id) === r.mentorId) : []),
+  (user, reports) => (user ? reports.filter((r) => user.id === r.mentorId) : []),
 );
 
 /** Unified pending item. */
@@ -390,8 +390,8 @@ export const selectPastMentorsWithReviews = createSelector(
   (past: PastMentorSummary[], reviews: MentorReview[], reports: MenteeReport[]) =>
     past.map((mentor) => ({
       ...mentor,
-      review: reviews.find((r) => r.mentorId === mentor.id),
-      report: reports.find((r) => r.mentorId === mentor.id),
+      review: reviews.find((r) => r.mentorId === String(mentor.id)),
+      report: reports.find((r) => r.mentorId === String(mentor.id)),
     })),
 );
 

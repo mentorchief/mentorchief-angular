@@ -7,6 +7,7 @@ import {
   resetMessaging,
   selectConversation,
   sendChatMessage,
+  setMentorUnread,
 } from './messaging.actions';
 import { conversationsAdapter } from './messaging.state';
 import { messagingInitialState } from './messaging.state';
@@ -66,4 +67,8 @@ export const messagingReducer = createReducer(
     delete next[conversationId];
     return { ...state, mentorUnreadByConversation: next };
   }),
+  on(setMentorUnread, (state, { conversationId, count }) => ({
+    ...state,
+    mentorUnreadByConversation: { ...state.mentorUnreadByConversation, [conversationId]: count },
+  })),
 );
