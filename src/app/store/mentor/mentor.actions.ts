@@ -6,7 +6,7 @@ export const loadMentorData = createAction('[Mentor] Load Data', props<{
   pendingRequests: PendingMentorshipRequest[];
   activeMentees: { id: number; name: string; goal: string; progress: number; monthsActive: number }[];
   earnings: { month: string; amount: number; status: string; mentees: number }[];
-  myMentees: { id: number; name: string; avatar: string; email: string; plan: string; startDate: string; progress: number; status: 'active' | 'pending' | 'completed' }[];
+  myMentees: { id: number; name: string; photoUrl: string; email: string; plan: string; startDate: string; progress: number; status: 'active' | 'pending' | 'completed' }[];
 }>());
 
 export const declineMentorshipRequest = createAction('[Mentor] Decline Request', props<{ requestId: number }>());

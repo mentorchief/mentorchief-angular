@@ -1,14 +1,14 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
-import { combineLatest, map } from 'rxjs';
-import { MENTORS } from '../../../core/data/mentors.data';
-import type { Mentor } from '../../../core/models/mentor.model';
+import { combineLatest, map, take } from 'rxjs';
+import type { MentorProfile } from '../../../core/models/mentor-profile.model';
 import type { AppState } from '../../../store/app.state';
 import { selectAuthUser } from '../../auth/store/auth.selectors';
 import { selectMentorProfileReviews } from '../../dashboard/store/dashboard.selectors';
+import { selectApprovedMentorProfiles } from '../../../store/users/users.selectors';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { UserRole } from '../../../core/models/user.model';
 import { ToastService } from '../../../shared/services/toast.service';
@@ -32,11 +32,17 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
             <!-- Profile Header -->
             <div class="bg-white rounded-lg border border-gray-200 p-6">
               <div class="flex items-start gap-6">
-                <img
-                  [src]="mentor.image"
-                  [alt]="mentor.name"
-                  class="w-24 h-24 rounded-lg object-cover"
-                />
+                @if (mentor.photoUrl) {
+                  <img
+                    [src]="mentor.photoUrl"
+                    [alt]="mentor.name"
+                    class="w-24 h-24 rounded-lg object-cover"
+                  />
+                } @else {
+                  <div class="w-24 h-24 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-2xl font-semibold">
+                    {{ getInitials(mentor.name) }}
+                  </div>
+                }
                 <div class="flex-1">
                   <div class="flex items-start justify-between">
                     <div>
@@ -56,8 +62,12 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                       <span class="text-gray-900 font-medium">{{ mentor.rating }}</span>
                       <span class="text-gray-500 text-sm">({{ (reviewCount$ | async) ?? 0 }} reviews)</span>
                     </div>
-                    <div class="text-gray-500 text-sm">{{ mentor.sessions }} subscriptions</div>
-                    <div class="text-gray-500 text-sm">{{ mentor.yearsOfExperience }} years exp</div>
+                    @if (mentor.sessions) {
+                      <div class="text-gray-500 text-sm">{{ mentor.sessions }} subscriptions</div>
+                    }
+                    @if (mentor.yearsOfExperience) {
+                      <div class="text-gray-500 text-sm">{{ mentor.yearsOfExperience }} years exp</div>
+                    }
                   </div>
                 </div>
               </div>
@@ -66,54 +76,59 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
             <!-- About -->
             <div class="bg-white rounded-lg border border-gray-200 p-6">
               <h2 class="text-lg text-gray-900 font-semibold mb-4">About</h2>
-              <p class="text-gray-600 leading-relaxed">{{ mentor.bio }}</p>
+              <p class="text-gray-600 leading-relaxed">{{ mentor.bio || 'No bio provided yet.' }}</p>
             </div>
 
             <!-- Expertise -->
-            <div class="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 class="text-lg text-gray-900 font-semibold mb-4">Areas of Expertise</h2>
-              <div class="flex flex-wrap gap-2">
-                @for (skill of mentor.expertise; track skill) {
-                  <span class="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-md text-sm">
-                    {{ skill }}
-                  </span>
-                }
+            @if (mentor.expertise.length > 0) {
+              <div class="bg-white rounded-lg border border-gray-200 p-6">
+                <h2 class="text-lg text-gray-900 font-semibold mb-4">Areas of Expertise</h2>
+                <div class="flex flex-wrap gap-2">
+                  @for (skill of mentor.expertise; track skill) {
+                    <span class="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-md text-sm">
+                      {{ skill }}
+                    </span>
+                  }
+                </div>
               </div>
-            </div>
+            }
 
             <!-- Reviews -->
             <div class="bg-white rounded-lg border border-gray-200 p-6">
               <h2 class="text-lg text-gray-900 font-semibold mb-2">Reviews</h2>
-              <p class="text-sm text-gray-500 mb-4">Sample reviews</p>
-              <div class="space-y-4">
-                @for (review of (profileReviews$ | async) ?? []; track review.name) {
-                  <div class="border-b border-gray-200 pb-4 last:border-0 last:pb-0">
-                    <div class="flex items-center justify-between mb-2">
-                      <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
-                          {{ getInitials(review.name) }}
+              @if ((profileReviews$ | async)?.length) {
+                <div class="space-y-4">
+                  @for (review of (profileReviews$ | async) ?? []; track review.name) {
+                    <div class="border-b border-gray-200 pb-4 last:border-0 last:pb-0">
+                      <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                          <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
+                            {{ getInitials(review.name) }}
+                          </div>
+                          <span class="text-gray-900 text-sm font-medium">{{ review.name }}</span>
                         </div>
-                        <span class="text-gray-900 text-sm font-medium">{{ review.name }}</span>
+                        <div class="flex items-center gap-1">
+                          @for (star of getStars(review.rating); track $index) {
+                            <fa-icon [icon]="['fas', 'star']" class="text-amber-400 text-sm w-3.5 h-3.5" />
+                          }
+                        </div>
                       </div>
-                      <div class="flex items-center gap-1">
-                        @for (star of getStars(review.rating); track $index) {
-                          <fa-icon [icon]="['fas', 'star']" class="text-amber-400 text-sm w-3.5 h-3.5" />
-                        }
-                      </div>
+                      <p class="text-gray-600 text-sm">{{ review.text }}</p>
                     </div>
-                    <p class="text-gray-600 text-sm">{{ review.text }}</p>
-                  </div>
+                  }
+                </div>
+                @if ((reviewCount$ | async) ?? 0 > sampleReviewsCount) {
+                  <p class="mt-4 pt-4 border-t border-gray-200">
+                    <a
+                      [routerLink]="['/mentor', mentor.id, 'reviews']"
+                      class="text-indigo-600 hover:text-indigo-800 text-sm font-medium no-underline"
+                    >
+                      See more ({{ reviewCount$ | async }} reviews) →
+                    </a>
+                  </p>
                 }
-              </div>
-              @if ((reviewCount$ | async) ?? 0 > sampleReviewsCount) {
-                <p class="mt-4 pt-4 border-t border-gray-200">
-                  <a
-                    [routerLink]="['/mentor', mentor.id, 'reviews']"
-                    class="text-indigo-600 hover:text-indigo-800 text-sm font-medium no-underline"
-                  >
-                    See more ({{ reviewCount$ | async }} reviews) →
-                  </a>
-                </p>
+              } @else {
+                <p class="text-gray-500 text-sm mt-2">No reviews yet.</p>
               }
             </div>
           </div>
@@ -136,10 +151,12 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                   <fa-icon [icon]="['fas', 'check']" class="text-green-500 w-4 h-4" />
                   Monthly report
                 </div>
-                <div class="flex items-center gap-3 text-sm text-gray-600">
-                  <fa-icon [icon]="['fas', 'check']" class="text-green-500 w-4 h-4" />
-                  Responds in {{ mentor.responseTime }}
-                </div>
+                @if (mentor.responseTime) {
+                  <div class="flex items-center gap-3 text-sm text-gray-600">
+                    <fa-icon [icon]="['fas', 'check']" class="text-green-500 w-4 h-4" />
+                    Responds in {{ mentor.responseTime }}
+                  </div>
+                }
               </div>
 
               @if (user$ | async; as user) {
@@ -167,11 +184,11 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                 } @else {
                   @if (user.role === UserRole.Mentor) {
                     <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                      You’re signed in as a mentor. Mentors can’t subscribe to other mentors. Switch to a mentee account if you want to request mentorship.
+                      You're signed in as a mentor. Mentors can't subscribe to other mentors. Switch to a mentee account if you want to request mentorship.
                     </div>
                   } @else {
                     <div class="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                      You’re signed in as an admin. Use the admin dashboard to manage mentorships instead of requesting a subscription.
+                      You're signed in as an admin. Use the admin dashboard to manage mentorships instead of requesting a subscription.
                     </div>
                   }
                 }
@@ -184,7 +201,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                   Sign in to request mentorship
                 </a>
                 <p class="text-xs text-muted-foreground text-center mt-2">
-                  You’ll need a mentee account to request a subscription with this mentor.
+                  You'll need a mentee account to request a subscription with this mentor.
                 </p>
               }
 
@@ -254,8 +271,9 @@ export class MentorProfilePageComponent {
   private readonly store = inject(Store<AppState>);
   private readonly toast = inject(ToastService);
   private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
-  mentor: Mentor | undefined;
+  mentor: MentorProfile | undefined;
   showRequestModal = false;
   selectedPlan = 'monthly';
   requestMessage = '';
@@ -279,7 +297,10 @@ export class MentorProfilePageComponent {
 
   constructor() {
     const id = this.route.snapshot.paramMap.get('id');
-    this.mentor = MENTORS.find((m) => m.id === id);
+    this.store.select(selectApprovedMentorProfiles).pipe(take(1)).subscribe((mentors) => {
+      this.mentor = id ? mentors.find((m) => m.id === id) : undefined;
+      this.cdr.markForCheck();
+    });
     this.hasPendingRequest = this.getPendingRequestIds().includes(id ?? '');
     this.showRequestModal = this.route.snapshot.routeConfig?.path === 'mentor/:id/request';
   }

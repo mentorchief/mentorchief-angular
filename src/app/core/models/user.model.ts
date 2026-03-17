@@ -22,7 +22,7 @@ export type MentorPlanDuration = 'monthly' | 'quarterly' | '6months';
 export interface MentorPlan {
   id: string;
   duration: MentorPlanDuration;
-  price: string;
+  price: number;
 }
 
 export interface UserExperience {
@@ -55,7 +55,8 @@ export interface User {
   portfolioUrl?: string;
   linkedin?: string;
   experiences?: UserExperience[];
-  subscriptionCost?: string;
+  photoUrl?: string;
+  subscriptionCost?: number;
   mentorPlans?: MentorPlan[];
   availability?: string[];
   menteeCapacity?: string;

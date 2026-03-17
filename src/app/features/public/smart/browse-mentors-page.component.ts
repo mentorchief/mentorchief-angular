@@ -1,15 +1,26 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
 import { MentorCardComponent } from '../../../shared/components/mentor-card.component';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
-import { MENTORS, CATEGORIES } from '../../../core/data/mentors.data';
-import type { Mentor } from '../../../core/models/mentor.model';
+import type { MentorProfile } from '../../../core/models/mentor-profile.model';
 import type { AppState } from '../../../store/app.state';
 import { selectMentorProfileReviewCountByMentorId } from '../../dashboard/store/dashboard.selectors';
+import { selectApprovedMentorProfiles } from '../../../store/users/users.selectors';
 
 const MENTORS_PAGE_SIZE = 9;
+
+export const CATEGORIES: string[] = [
+  'All',
+  'Product Management',
+  'Software Engineering',
+  'Design',
+  'Data Science',
+  'Marketing',
+  'Entrepreneurship',
+  'Leadership',
+];
 
 @Component({
   selector: 'mc-browse-mentors-page',
@@ -90,52 +101,59 @@ const MENTORS_PAGE_SIZE = 9;
       </div>
 
       <!-- Mentor Grid -->
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        @for (mentor of paginatedMentors; track mentor.id) {
-          <mc-mentor-card
-            [mentor]="mentor"
-            [reviewCount]="(reviewCountByMentorId$ | async)?.[mentor.id] ?? 0"
-          />
-        }
-      </div>
-
-      @if (filteredMentors.length > mentorsPageSize) {
-        <div class="mt-8">
-          <mc-pagination
-            [totalItems]="filteredMentors.length"
-            [pageSize]="mentorsPageSize"
-            [currentPage]="mentorsPage"
-            (pageChange)="onMentorsPageChange($event)"
-          />
+      @if (allMentors.length > 0) {
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          @for (mentor of paginatedMentors; track mentor.id) {
+            <mc-mentor-card
+              [mentor]="mentor"
+              [reviewCount]="(reviewCountByMentorId$ | async)?.[mentor.id] ?? 0"
+            />
+          }
         </div>
-      }
 
-      @if (filteredMentors.length === 0) {
+        @if (filteredMentors.length > mentorsPageSize) {
+          <div class="mt-8">
+            <mc-pagination
+              [totalItems]="filteredMentors.length"
+              [pageSize]="mentorsPageSize"
+              [currentPage]="mentorsPage"
+              (pageChange)="onMentorsPageChange($event)"
+            />
+          </div>
+        }
+
+        @if (filteredMentors.length === 0) {
+          <div class="text-center py-16">
+            <p class="text-muted-foreground text-lg">No mentors match your filters.</p>
+            <button
+              type="button"
+              (click)="resetFilters()"
+              class="mt-4 px-4 py-2 text-primary hover:bg-secondary rounded-md transition-colors"
+            >
+              Clear all filters
+            </button>
+          </div>
+        }
+      } @else {
         <div class="text-center py-16">
-          <p class="text-muted-foreground text-lg">No mentors match your filters.</p>
-          <button
-            type="button"
-            (click)="resetFilters()"
-            class="mt-4 px-4 py-2 text-primary hover:bg-secondary rounded-md transition-colors"
-          >
-            Clear all filters
-          </button>
+          <p class="text-muted-foreground text-lg">No mentors available yet.</p>
+          <p class="text-muted-foreground text-sm mt-2">Check back soon — mentors are being onboarded.</p>
         </div>
       }
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class BrowseMentorsPageComponent {
+export class BrowseMentorsPageComponent implements OnInit {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly store = inject(Store<AppState>);
   readonly reviewCountByMentorId$ = this.store.select(selectMentorProfileReviewCountByMentorId);
-  readonly allMentors: Mentor[] = MENTORS;
+  allMentors: MentorProfile[] = [];
   readonly categories: string[] = CATEGORIES;
   readonly mentorsPageSize = MENTORS_PAGE_SIZE;
   mentorsPage = 1;
 
-  get paginatedMentors(): Mentor[] {
+  get paginatedMentors(): MentorProfile[] {
     const list = this.filteredMentors;
     const start = (this.mentorsPage - 1) * this.mentorsPageSize;
     return list.slice(start, start + this.mentorsPageSize);
@@ -145,7 +163,14 @@ export class BrowseMentorsPageComponent {
   selectedCategory = 'All';
   priceRange = 'all';
 
-  filteredMentors: Mentor[] = [...MENTORS];
+  filteredMentors: MentorProfile[] = [];
+
+  ngOnInit(): void {
+    this.store.select(selectApprovedMentorProfiles).subscribe((mentors) => {
+      this.allMentors = mentors;
+      this.filterMentors();
+    });
+  }
 
   filterMentors(): void {
     let result = [...this.allMentors];

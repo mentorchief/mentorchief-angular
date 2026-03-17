@@ -1,6 +1,5 @@
 import { createReducer, on } from '@ngrx/store';
 import type { ChatConversation, ChatConversationCore, ChatMessage, ChatMessageCore } from '../../core/models/chat.model';
-import { ADMIN_CHATS } from '../../core/data/chats.data';
 import {
   clearConversationUnread,
   loadConversations,
@@ -11,8 +10,6 @@ import {
 } from './messaging.actions';
 import { conversationsAdapter } from './messaging.state';
 import { messagingInitialState } from './messaging.state';
-
-const initialUnread: Record<string, number> = { 'conv-1': 1, 'conv-2': 2 };
 
 function toMessageCore(m: ChatMessage | ChatMessageCore): ChatMessageCore {
   const { senderName, senderRole, ...rest } = m as ChatMessage;
@@ -27,10 +24,8 @@ export function toConversationCore(c: ChatConversation): ChatConversationCore {
   };
 }
 
-const initialConversations = ADMIN_CHATS.map(toConversationCore);
-
 export const messagingReducer = createReducer(
-  { ...conversationsAdapter.addMany(initialConversations, messagingInitialState), mentorUnreadByConversation: initialUnread },
+  messagingInitialState,
   on(loadConversations, (state, { conversations, mentorUnread }) =>
     conversationsAdapter.setAll(conversations.map(toConversationCore), {
       ...messagingInitialState,

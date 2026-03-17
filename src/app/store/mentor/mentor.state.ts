@@ -16,16 +16,10 @@ export interface MentorState {
   activeMentees: ActiveMenteeSummary[];
   earnings: MentorEarning[];
   myMentees: MenteeListItem[];
-  payoutAccount: MentorPayoutAccount;
+  payoutAccount: MentorPayoutAccount | null;
   acceptingNewMentees: boolean;
   notificationSettings: MentorNotificationSetting[];
 }
-
-export const defaultPayoutAccount: MentorPayoutAccount = {
-  type: 'bank',
-  bankName: 'Chase Bank',
-  accountNumber: '12345678842',
-};
 
 export const defaultNotificationSettings: MentorNotificationSetting[] = [
   { id: 'requests', label: 'New Mentee Requests', description: 'Get notified when someone wants to join', enabled: true },
@@ -41,7 +35,7 @@ export const mentorInitialState: MentorState = {
   activeMentees: [],
   earnings: [],
   myMentees: [],
-  payoutAccount: defaultPayoutAccount,
+  payoutAccount: null,
   acceptingNewMentees: true,
   notificationSettings: defaultNotificationSettings,
 };

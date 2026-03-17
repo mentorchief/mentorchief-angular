@@ -44,7 +44,7 @@ const PAST_PAGE_SIZE = 5;
             <div class="bg-card rounded-lg border border-border p-5">
               <div class="flex items-start gap-4">
                 <img
-                  [src]="mentor.image"
+                  [src]="mentor.photoUrl"
                   [alt]="mentor.name"
                   class="w-16 h-16 rounded-lg object-cover"
                 />
@@ -118,7 +118,7 @@ const PAST_PAGE_SIZE = 5;
               <div class="bg-card rounded-lg border border-border p-5">
                 <div class="flex items-start gap-4">
                   <img
-                    [src]="item.image"
+                    [src]="item.photoUrl"
                     [alt]="item.name"
                     class="w-14 h-14 rounded-lg object-cover grayscale"
                   />

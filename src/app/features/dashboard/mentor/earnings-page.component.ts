@@ -153,22 +153,24 @@ const PAGE_SIZE = 10;
         </div>
         <div class="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
           @if ((payoutAccount$ | async); as payoutAccount) {
-          @if (payoutAccount.type === 'bank') {
-            <div class="w-12 h-8 bg-blue-600 rounded flex items-center justify-center">
-              <span class="text-white text-xs font-bold">BANK</span>
-            </div>
-            <div class="flex-1">
-              <p class="text-foreground text-sm font-medium">{{ payoutAccount.bankName }} •••• {{ payoutAccount.accountNumber?.slice(-4) ?? '----' }}</p>
-            </div>
+            @if (payoutAccount.type === 'bank') {
+              <div class="w-12 h-8 bg-blue-600 rounded flex items-center justify-center">
+                <span class="text-white text-xs font-bold">BANK</span>
+              </div>
+              <div class="flex-1">
+                <p class="text-foreground text-sm font-medium">{{ payoutAccount.bankName }} •••• {{ payoutAccount.accountNumber?.slice(-4) ?? '----' }}</p>
+              </div>
+            } @else {
+              <div class="w-12 h-8 bg-indigo-600 rounded flex items-center justify-center">
+                <span class="text-white text-xs font-bold">INSTAPAY</span>
+              </div>
+              <div class="flex-1">
+                <p class="text-foreground text-sm font-medium">•••• {{ payoutAccount.instapayNumber?.slice(-4) ?? '----' }}</p>
+                <p class="text-muted-foreground text-xs">Instapay</p>
+              </div>
+            }
           } @else {
-            <div class="w-12 h-8 bg-indigo-600 rounded flex items-center justify-center">
-              <span class="text-white text-xs font-bold">INSTAPAY</span>
-            </div>
-            <div class="flex-1">
-              <p class="text-foreground text-sm font-medium">•••• {{ payoutAccount.instapayNumber?.slice(-4) ?? '----' }}</p>
-              <p class="text-muted-foreground text-xs">Instapay</p>
-            </div>
-          }
+            <p class="text-muted-foreground text-sm">No payout account set yet.</p>
           }
         </div>
       </div>
@@ -340,10 +342,10 @@ export class MentorEarningsPageComponent implements OnInit, OnDestroy {
   openPayoutDialog(): void {
     this.payoutAccount$.pipe(take(1)).subscribe((payoutAccount) => {
       this.payoutForm.patchValue({
-        type: payoutAccount.type,
-        bankName: payoutAccount.bankName ?? '',
-        accountNumber: payoutAccount.accountNumber ?? '',
-        instapayNumber: payoutAccount.instapayNumber ?? '',
+        type: payoutAccount?.type ?? 'bank',
+        bankName: payoutAccount?.bankName ?? '',
+        accountNumber: payoutAccount?.accountNumber ?? '',
+        instapayNumber: payoutAccount?.instapayNumber ?? '',
       });
       this.updatePayoutValidators();
       this.payoutDialogOpen = true;

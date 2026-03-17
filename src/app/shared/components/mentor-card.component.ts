@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import type { Mentor } from '../../core/models/mentor.model';
+import type { MentorProfile } from '../../core/models/mentor-profile.model';
 
 @Component({
   selector: 'mc-mentor-card',
@@ -16,7 +16,7 @@ import type { Mentor } from '../../core/models/mentor.model';
       <!-- Image -->
       <div class="relative h-52 overflow-hidden shrink-0 bg-muted">
         <img
-          [src]="mentor.image"
+          [src]="mentor.photoUrl"
           [alt]="mentor.name"
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
@@ -77,7 +77,7 @@ import type { Mentor } from '../../core/models/mentor.model';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MentorCardComponent {
-  @Input({ required: true }) mentor!: Mentor;
+  @Input({ required: true }) mentor!: MentorProfile;
   /** When provided, used as review count (from store); otherwise falls back to mentor.reviews. */
   @Input() reviewCount?: number;
 }

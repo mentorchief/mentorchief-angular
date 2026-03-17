@@ -2,36 +2,15 @@ import { Injectable, inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { Store } from '@ngrx/store';
 import { tap, withLatestFrom } from 'rxjs';
-import { UserRole } from '../../core/models/user.model';
 import { selectAuthUser } from '../../features/auth/store/auth.selectors';
 import { loadCurrentUserSuccess, loginSuccess, logout, markRegistered, signupSuccess } from '../../features/auth/store/auth.actions';
 import { initializeForRole, resetSession } from './session.actions';
-import {
-  loadMentorData,
-  resetMentor,
-} from '../mentor';
-import {
-  loadMenteeData,
-  resetMentee,
-} from '../mentee';
-import {
-  loadAdminData,
-  resetAdmin,
-} from '../admin';
-import {
-  loadConversations,
-  resetMessaging,
-} from '../messaging';
-import {
-  loadReports,
-  resetReports,
-} from '../reports';
+import { resetMentor } from '../mentor';
+import { resetMentee } from '../mentee';
+import { resetAdmin } from '../admin';
+import { resetMessaging } from '../messaging';
+import { resetReports } from '../reports';
 import { resetUsers } from '../users';
-import { ADMIN_CHATS } from '../../core/data/chats.data';
-import { initialMenteeReports, initialMentorProfileReviews } from '../reports/reports.data';
-import { MENTOR_SEED } from '../mentor/mentor.seed';
-import { MENTEE_SEED } from '../mentee/mentee.seed';
-import { ADMIN_SEED } from '../admin/admin.seed';
 
 @Injectable()
 export class SessionEffects {
@@ -98,31 +77,12 @@ export class SessionEffects {
     () =>
       this.actions$.pipe(
         ofType(initializeForRole),
-        tap(({ role }) => {
-          this.store.dispatch(loadConversations({
-            conversations: ADMIN_CHATS,
-            mentorUnread: role === UserRole.Mentor ? { 'conv-1': 1, 'conv-2': 2 } : {},
-          }));
-          this.store.dispatch(loadReports({
-            menteeReviews: [],
-            mentorProfileReviews: initialMentorProfileReviews,
-            menteeReports: initialMenteeReports,
-          }));
-          if (role === UserRole.Mentor) {
-            this.store.dispatch(loadMentorData(MENTOR_SEED));
-          } else {
-            this.store.dispatch(resetMentor());
-          }
-          if (role === UserRole.Mentee) {
-            this.store.dispatch(loadMenteeData(MENTEE_SEED));
-          } else {
-            this.store.dispatch(resetMentee());
-          }
-          if (role === UserRole.Admin) {
-            this.store.dispatch(loadAdminData(ADMIN_SEED));
-          } else {
-            this.store.dispatch(resetAdmin());
-          }
+        tap(({ role: _role }) => {
+          this.store.dispatch(resetMentor());
+          this.store.dispatch(resetMentee());
+          this.store.dispatch(resetAdmin());
+          this.store.dispatch(resetMessaging());
+          this.store.dispatch(resetReports());
         }),
       ),
     { dispatch: false },

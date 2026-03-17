@@ -13,8 +13,7 @@ export type MentorPlanDuration = 'monthly' | 'quarterly' | '6months';
 export interface MentorPlan {
   id: string;
   duration: MentorPlanDuration;
-  /** Stored as string during registration; convert to number where needed. */
-  price: string;
+  price: number;
 }
 
 import type { UserRole } from './user.model';
@@ -28,7 +27,7 @@ export interface RegistrationData {
   phone: string;
   location: string;
   gender: string;
-  photo: string | null;
+  photoUrl: string | null;
   jobTitle: string;
   company: string;
   yearsOfExperience: string;
@@ -37,7 +36,7 @@ export interface RegistrationData {
   skills: string[];
   tools: string[];
   portfolioUrl: string;
-  subscriptionCost: string;
+  subscriptionCost: number;
   mentorPlans: MentorPlan[];
   availability: string[];
   menteeCapacity: string;

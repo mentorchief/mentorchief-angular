@@ -184,14 +184,14 @@ export class PreferencePageComponent {
       this.formData = {
         mentorPlans: data.mentorPlans.length > 0
           ? data.mentorPlans.map((p) => ({ ...p }))
-          : [this.createPlan('monthly', data.subscriptionCost || '')],
+          : [this.createPlan('monthly', data.subscriptionCost || 0)],
         availability: [...data.availability],
         menteeCapacity: data.menteeCapacity,
       };
     });
   }
 
-  createPlan(duration: 'monthly' | 'quarterly' | '6months' = 'monthly', price = ''): MentorPlan {
+  createPlan(duration: 'monthly' | 'quarterly' | '6months' = 'monthly', price: number = 0): MentorPlan {
     return {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       duration,
@@ -237,7 +237,7 @@ export class PreferencePageComponent {
     this.errors = {};
     if (this.formData.mentorPlans.length === 0) {
       this.errors['mentorPlans'] = 'Add at least one pricing plan';
-    } else if (this.formData.mentorPlans.some((p) => !p.price || Number(p.price) <= 0)) {
+    } else if (this.formData.mentorPlans.some((p) => !p.price || p.price <= 0)) {
       this.errors['mentorPlans'] = 'Each plan must have a valid price';
     }
     if (this.formData.availability.length === 0) {
@@ -261,7 +261,7 @@ export class PreferencePageComponent {
       this.store.dispatch(updateData({
         updates: {
           ...this.formData,
-          subscriptionCost: primaryPlan?.price ?? '',
+          subscriptionCost: primaryPlan?.price ?? 0,
         }
       }));
       this.store.dispatch(setCurrentStep({ step: 6 }));

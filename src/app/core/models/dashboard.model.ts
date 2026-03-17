@@ -8,7 +8,7 @@ export interface ActiveMentorship {
   mentorName: string;
   mentorTitle: string;
   mentorCompany: string;
-  mentorImage: string;
+  mentorPhotoUrl: string;
   monthsActive: number;
   progress: number;
 }
@@ -170,7 +170,7 @@ export interface ActiveMentorSummary {
   name: string;
   title: string;
   company: string;
-  image: string;
+  photoUrl: string;
   startDate: string;
   price: number;
   progress: number;
@@ -180,7 +180,7 @@ export interface PastMentorSummary {
   id: number;
   name: string;
   title: string;
-  image: string;
+  photoUrl: string;
   startDate: string;
   endDate: string;
 }
@@ -231,7 +231,7 @@ export interface MenteeReport {
 export interface MenteeListItem {
   id: number;
   name: string;
-  avatar: string;
+  photoUrl: string;
   email: string;
   plan: string;
   startDate: string;

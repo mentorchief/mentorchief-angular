@@ -249,7 +249,7 @@ export class PreviewPageComponent {
     phone: '',
     location: '',
     gender: '',
-    photo: '',
+    photoUrl: '',
     jobTitle: '',
     company: '',
     yearsOfExperience: '',
@@ -258,7 +258,7 @@ export class PreviewPageComponent {
     skills: [],
     tools: [],
     portfolioUrl: '',
-    subscriptionCost: '',
+    subscriptionCost: 0,
     mentorPlans: [],
     availability: [],
     menteeCapacity: '',
@@ -318,7 +318,8 @@ export class PreviewPageComponent {
 
     const profile: Record<string, unknown> = {
       name: fullName,
-      avatar: this.data.photo || initials,
+      avatar: initials,
+      photoUrl: this.data.photoUrl || undefined,
       role: this.data.role ?? this.user.role,
       phone: this.data.phone || undefined,
       location: this.data.location || undefined,
@@ -333,7 +334,7 @@ export class PreviewPageComponent {
     };
 
     if (this.data.role === UserRole.Mentor) {
-      profile['subscriptionCost'] = this.data.subscriptionCost || undefined;
+      profile['subscriptionCost'] = this.data.subscriptionCost || undefined; // number
       profile['mentorPlans'] = this.data.mentorPlans.length ? this.data.mentorPlans : undefined;
       profile['availability'] = this.data.availability.length ? this.data.availability : undefined;
       profile['menteeCapacity'] = this.data.menteeCapacity || undefined;

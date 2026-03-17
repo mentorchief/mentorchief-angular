@@ -99,7 +99,7 @@ import { selectConversation } from '../store/dashboard.actions';
                 </div>
                 <div>
                   <h3 class="text-foreground font-medium">
-                    <a [routerLink]="['/mentor', sel.mentorProfileId]" target="_blank" class="text-primary hover:underline no-underline">{{ sel.mentorName }}</a>
+                    <a [routerLink]="['/mentor', sel.mentorId]" target="_blank" class="text-primary hover:underline no-underline">{{ sel.mentorName }}</a>
                     <span class="text-muted-foreground font-normal"> (Mentor) ↔ </span>
                     <a routerLink="/dashboard/admin/users" class="text-primary hover:underline no-underline">{{ sel.menteeName }}</a>
                     <span class="text-muted-foreground font-normal"> (Mentee)</span>

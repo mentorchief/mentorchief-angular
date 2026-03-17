@@ -13,11 +13,9 @@ import {
   setMentorPendingRequests,
   updateMentorPayoutAccount,
 } from './mentor.actions';
-import { defaultPayoutAccount, defaultNotificationSettings, mentorInitialState, type MentorState } from './mentor.state';
-import { MENTOR_SEED } from './mentor.seed';
-
+import { defaultNotificationSettings, mentorInitialState, type MentorState } from './mentor.state';
 export const mentorReducer = createReducer<MentorState>(
-  { ...mentorInitialState, ...MENTOR_SEED },
+  mentorInitialState,
   on(loadMentorData, (_, { stats, pendingRequests, activeMentees, earnings, myMentees }) => ({
     ...mentorInitialState,
     stats,
@@ -25,7 +23,7 @@ export const mentorReducer = createReducer<MentorState>(
     activeMentees,
     earnings,
     myMentees,
-    payoutAccount: defaultPayoutAccount,
+    payoutAccount: null,
     acceptingNewMentees: true,
     notificationSettings: defaultNotificationSettings,
   })),

@@ -27,7 +27,6 @@ export interface ChatSubscription {
 export interface ChatConversationCore {
   id: string;
   mentorId: string;
-  mentorProfileId: string;
   menteeId: string;
   lastMessage: string;
   lastTimestamp: string;

@@ -121,22 +121,24 @@ import type { User } from '../../../core/models/user.model';
           <p class="text-muted-foreground text-sm mb-4">Where your earnings will be deposited. Update your bank account or Instapay details below.</p>
           <div class="flex items-center gap-4 p-4 bg-muted/50 rounded-lg mb-4">
             @if ((payoutAccount$ | async); as payoutAccount) {
-            @if (payoutAccount.type === 'bank') {
-              <div class="w-12 h-8 bg-blue-600 rounded flex items-center justify-center shrink-0">
-                <span class="text-white text-xs font-bold">BANK</span>
-              </div>
-              <div class="flex-1">
-                <p class="text-foreground text-sm font-medium">{{ payoutAccount.bankName }} •••• {{ payoutAccount.accountNumber?.slice(-4) ?? '----' }}</p>
-              </div>
+              @if (payoutAccount.type === 'bank') {
+                <div class="w-12 h-8 bg-blue-600 rounded flex items-center justify-center shrink-0">
+                  <span class="text-white text-xs font-bold">BANK</span>
+                </div>
+                <div class="flex-1">
+                  <p class="text-foreground text-sm font-medium">{{ payoutAccount.bankName }} •••• {{ payoutAccount.accountNumber?.slice(-4) ?? '----' }}</p>
+                </div>
+              } @else {
+                <div class="w-12 h-8 bg-indigo-600 rounded flex items-center justify-center shrink-0">
+                  <span class="text-white text-xs font-bold">INSTAPAY</span>
+                </div>
+                <div class="flex-1">
+                  <p class="text-foreground text-sm font-medium">•••• {{ payoutAccount.instapayNumber?.slice(-4) ?? '----' }}</p>
+                  <p class="text-muted-foreground text-xs">Instapay</p>
+                </div>
+              }
             } @else {
-              <div class="w-12 h-8 bg-indigo-600 rounded flex items-center justify-center shrink-0">
-                <span class="text-white text-xs font-bold">INSTAPAY</span>
-              </div>
-              <div class="flex-1">
-                <p class="text-foreground text-sm font-medium">•••• {{ payoutAccount.instapayNumber?.slice(-4) ?? '----' }}</p>
-                <p class="text-muted-foreground text-xs">Instapay</p>
-              </div>
-            }
+              <p class="text-muted-foreground text-sm">No payout account set yet.</p>
             }
           </div>
           <button type="button" (click)="openPayoutDialog()" class="px-4 py-2 border border-border text-foreground rounded-md text-sm hover:bg-muted">
@@ -263,7 +265,7 @@ export class MentorSettingsPageComponent implements OnInit {
 
   ngOnInit(): void {
     this.user$.pipe(filter((u): u is User => u != null), take(1)).subscribe((user) => {
-      const cost = user.subscriptionCost ?? String(this.defaultSamplePrice);
+      const cost = user.subscriptionCost ?? this.defaultSamplePrice;
       this.profileForm.patchValue({
         name: user.name,
         jobTitle: user.jobTitle ?? '',
@@ -296,7 +298,7 @@ export class MentorSettingsPageComponent implements OnInit {
         name: v.name,
         jobTitle: v.jobTitle || undefined,
         bio: v.bio || undefined,
-        subscriptionCost: v.subscriptionCost ? String(v.subscriptionCost) : undefined,
+        subscriptionCost: v.subscriptionCost ? Number(v.subscriptionCost) : undefined,
       },
     }));
     this.toast.success('Profile updated successfully.');
@@ -306,14 +308,14 @@ export class MentorSettingsPageComponent implements OnInit {
   openPayoutDialog(): void {
     this.payoutAccount$.pipe(take(1)).subscribe((payoutAccount) => {
       this.payoutForm.patchValue({
-        type: payoutAccount.type,
-        bankName: payoutAccount.bankName ?? '',
-        accountNumber: payoutAccount.accountNumber ?? '',
-        instapayNumber: payoutAccount.instapayNumber ?? '',
+        type: payoutAccount?.type ?? 'bank',
+        bankName: payoutAccount?.bankName ?? '',
+        accountNumber: payoutAccount?.accountNumber ?? '',
+        instapayNumber: payoutAccount?.instapayNumber ?? '',
       });
-    this.updatePayoutValidators();
-    this.payoutDialogOpen = true;
-    this.cdr.markForCheck();
+      this.updatePayoutValidators();
+      this.payoutDialogOpen = true;
+      this.cdr.markForCheck();
     });
   }
 

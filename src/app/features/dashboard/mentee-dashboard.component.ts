@@ -43,7 +43,13 @@ import { ToastService } from '../../shared/services/toast.service';
             <h3 class="text-foreground font-medium mb-4">Active Mentorship</h3>
             @if (activeMentorship$ | async; as m) {
               <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
-                <img [src]="m.mentorImage" [alt]="m.mentorName" class="w-14 h-14 rounded-lg object-cover" />
+                @if (m.mentorPhotoUrl) {
+                  <img [src]="m.mentorPhotoUrl" [alt]="m.mentorName" class="w-14 h-14 rounded-lg object-cover" />
+                } @else {
+                  <div class="w-14 h-14 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-semibold">
+                    {{ m.mentorName[0] }}
+                  </div>
+                }
                 <div class="flex-1">
                   <div class="flex items-center justify-between gap-3">
                     <div>
