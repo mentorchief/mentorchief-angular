@@ -54,9 +54,13 @@ import type { Mentor } from '../../core/models/mentor.model';
         <!-- Rating row -->
         <div class="flex items-center gap-3 mt-4">
           <div class="flex items-center gap-1.5">
-            <fa-icon [icon]="['fas', 'star']" class="text-amber-400 w-4 h-4" />
-            <span class="text-foreground text-sm">{{ mentor.rating }}</span>
-            <span class="text-muted-foreground text-xs">({{ reviewCount ?? mentor.reviews }})</span>
+            @if ((reviewCount ?? mentor.reviews) > 0) {
+              <fa-icon [icon]="['fas', 'star']" class="text-amber-400 w-4 h-4" />
+              <span class="text-foreground text-sm">{{ mentor.rating }}</span>
+              <span class="text-muted-foreground text-xs">({{ reviewCount ?? mentor.reviews }})</span>
+            } @else {
+              <span class="text-muted-foreground text-xs">No reviews yet</span>
+            }
           </div>
           @if (mentor.yearsOfExperience) {
             <div class="flex items-center gap-1 text-muted-foreground text-xs">

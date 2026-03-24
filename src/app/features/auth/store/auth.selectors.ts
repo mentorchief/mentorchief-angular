@@ -36,3 +36,13 @@ export const selectAuthError = createSelector(
   (state) => state.error,
 );
 
+/**
+ * The effective role for UI and guard purposes.
+ * Admins can switch to mentor/mentee view; for non-admins this equals user.role.
+ */
+export const selectActiveRole = createSelector(
+  selectAuthState,
+  selectAuthUser,
+  (authState, user) => authState.activeRole ?? user?.role ?? null,
+);
+

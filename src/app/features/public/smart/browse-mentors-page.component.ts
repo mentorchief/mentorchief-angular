@@ -1,13 +1,15 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
+import { Subject, takeUntil } from 'rxjs';
 import { MentorCardComponent } from '../../../shared/components/mentor-card.component';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
-import { MENTORS, CATEGORIES } from '../../../core/data/mentors.data';
+const CATEGORIES: string[] = ['All', 'Product Management', 'Software Engineering', 'Design', 'Data Science', 'Marketing', 'Entrepreneurship', 'Leadership'];
 import type { Mentor } from '../../../core/models/mentor.model';
 import type { AppState } from '../../../store/app.state';
 import { selectMentorProfileReviewCountByMentorId } from '../../dashboard/store/dashboard.selectors';
+import { selectActiveMentorsAsMentor } from '../../../store/users/users.selectors';
 
 const MENTORS_PAGE_SIZE = 9;
 
@@ -126,14 +128,17 @@ const MENTORS_PAGE_SIZE = 9;
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class BrowseMentorsPageComponent {
+export class BrowseMentorsPageComponent implements OnInit, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly store = inject(Store<AppState>);
+  private readonly destroy$ = new Subject<void>();
   readonly reviewCountByMentorId$ = this.store.select(selectMentorProfileReviewCountByMentorId);
-  readonly allMentors: Mentor[] = MENTORS;
+  readonly mentors$ = this.store.select(selectActiveMentorsAsMentor);
   readonly categories: string[] = CATEGORIES;
   readonly mentorsPageSize = MENTORS_PAGE_SIZE;
   mentorsPage = 1;
+
+  private allMentors: Mentor[] = [];
 
   get paginatedMentors(): Mentor[] {
     const list = this.filteredMentors;
@@ -145,7 +150,19 @@ export class BrowseMentorsPageComponent {
   selectedCategory = 'All';
   priceRange = 'all';
 
-  filteredMentors: Mentor[] = [...MENTORS];
+  filteredMentors: Mentor[] = [];
+
+  ngOnInit(): void {
+    this.mentors$.pipe(takeUntil(this.destroy$)).subscribe((mentors) => {
+      this.allMentors = mentors;
+      this.filterMentors();
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
 
   filterMentors(): void {
     let result = [...this.allMentors];

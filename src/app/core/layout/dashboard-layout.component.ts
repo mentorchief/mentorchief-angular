@@ -3,10 +3,11 @@ import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { Store } from '@ngrx/store';
-import { Observable } from 'rxjs';
+import { combineLatest, Observable } from 'rxjs';
+import { filter } from 'rxjs';
 import type { AppState } from '../../store/app.state';
-import { selectAuthUser } from '../../features/auth/store/auth.selectors';
-import { logout } from '../../features/auth/store/auth.actions';
+import { selectAuthUser, selectActiveRole } from '../../features/auth/store/auth.selectors';
+import { logout, switchActiveRole } from '../../features/auth/store/auth.actions';
 import { MentorApprovalStatus, UserRole, type User } from '../models/user.model';
 import { ROUTES } from '../routes';
 import { NavbarComponent } from '../../shared/components/navbar.component';
@@ -30,21 +31,43 @@ interface NavItem {
       <div class="flex">
         <!-- Sidebar -->
         <aside class="hidden lg:block w-64 min-h-[calc(100vh-64px)] bg-card border-r border-border p-4">
-          @if (user$ | async; as user) {
-            <div class="mb-6 p-3 bg-muted/50 rounded-lg">
+          @if (vm$ | async; as vm) {
+            <div class="mb-4 p-3 bg-muted/50 rounded-lg">
               <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-primary rounded-md flex items-center justify-center">
-                  <span class="text-primary-foreground text-sm font-medium">{{ getInitials(user.name) }}</span>
-                </div>
+                @if (isAvatarUrl(vm.user.avatar)) {
+                  <img [src]="vm.user.avatar" [alt]="vm.user.name" class="w-10 h-10 rounded-md object-cover" />
+                } @else {
+                  <div class="w-10 h-10 bg-primary rounded-md flex items-center justify-center">
+                    <span class="text-primary-foreground text-sm font-medium">{{ getInitials(vm.user.name) }}</span>
+                  </div>
+                }
                 <div>
-                  <p class="text-sm font-medium text-foreground">{{ user.name }}</p>
-                  <p class="text-xs text-muted-foreground capitalize">{{ user.role }}</p>
+                  <p class="text-sm font-medium text-foreground">{{ vm.user.name }}</p>
+                  <p class="text-xs text-muted-foreground capitalize">{{ vm.user.role }}</p>
                 </div>
               </div>
             </div>
 
+            @if (vm.user.role === UserRole.Admin) {
+              <div class="mb-4 p-3 bg-muted/30 rounded-lg border border-border">
+                <p class="text-xs text-muted-foreground mb-2 font-medium">View as</p>
+                <div class="flex gap-1">
+                  @for (r of roleOptions; track r.value) {
+                    <button
+                      (click)="switchRole(r.value)"
+                      [class]="vm.activeRole === r.value
+                        ? 'flex-1 py-1 text-xs rounded font-medium bg-primary text-primary-foreground'
+                        : 'flex-1 py-1 text-xs rounded font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors'"
+                    >
+                      {{ r.label }}
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+
             <nav class="space-y-1">
-              @for (item of getNavItems(user); track item.path) {
+              @for (item of getNavItems(vm.user, vm.activeRole); track item.path) {
                 <a
                   [routerLink]="item.path"
                   routerLinkActive="bg-secondary text-primary"
@@ -71,9 +94,6 @@ interface NavItem {
 
         <!-- Main Content -->
         <main class="flex-1 min-h-[calc(100vh-64px)]">
-          <div class="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-sm text-amber-800">
-            Demo data – numbers and names are for illustration only.
-          </div>
           <router-outlet />
         </main>
       </div>
@@ -84,14 +104,38 @@ interface NavItem {
 export class DashboardLayoutComponent {
   private readonly store = inject(Store<AppState>);
   private readonly confirmDialog = inject(ConfirmDialogService);
-  readonly user$: Observable<User | null> = this.store.select(selectAuthUser);
+
+  readonly UserRole = UserRole;
+
+  readonly roleOptions = [
+    { value: UserRole.Admin, label: 'Admin' },
+    { value: UserRole.Mentor, label: 'Mentor' },
+    { value: UserRole.Mentee, label: 'Mentee' },
+  ];
+
+  readonly vm$: Observable<{ user: User; activeRole: UserRole | null }> = combineLatest({
+    user: this.store.select(selectAuthUser),
+    activeRole: this.store.select(selectActiveRole),
+  }).pipe(
+    filter((vm): vm is { user: User; activeRole: UserRole | null } => vm.user !== null),
+  );
+
+  switchRole(role: UserRole): void {
+    this.store.dispatch(switchActiveRole({ role }));
+  }
+
+  isAvatarUrl(avatar: string | undefined): boolean {
+    return !!avatar && (avatar.startsWith('http') || avatar.startsWith('/'));
+  }
 
   getInitials(name: string): string {
     return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
   }
 
-  getNavItems(user: User): NavItem[] {
-    if (user.role === UserRole.Mentee) {
+  getNavItems(user: User, activeRole: UserRole | null): NavItem[] {
+    const role = activeRole ?? user.role;
+
+    if (role === UserRole.Mentee) {
       return [
         { label: 'Dashboard', path: ROUTES.mentee.dashboard, icon: ['fas', 'house'] },
         { label: 'My Mentors', path: ROUTES.mentee.myMentors, icon: ['fas', 'users'] },
@@ -102,17 +146,16 @@ export class DashboardLayoutComponent {
       ];
     }
 
-    if (user.role === UserRole.Mentor) {
-      const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
-      if (status === MentorApprovalStatus.Pending) {
-        return [
-          { label: 'Application status', path: ROUTES.mentor.pending, icon: ['fas', 'clock'] },
-        ];
-      }
-      if (status === MentorApprovalStatus.Rejected) {
-        return [
-          { label: 'Application status', path: ROUTES.mentor.rejected, icon: ['fas', 'circle-xmark'] },
-        ];
+    if (role === UserRole.Mentor) {
+      // Admins viewing as mentor always get full mentor nav
+      if (user.role !== UserRole.Admin) {
+        const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Pending;
+        if (status === MentorApprovalStatus.Pending) {
+          return [{ label: 'Application status', path: ROUTES.mentor.pending, icon: ['fas', 'clock'] }];
+        }
+        if (status === MentorApprovalStatus.Rejected) {
+          return [{ label: 'Application status', path: ROUTES.mentor.rejected, icon: ['fas', 'circle-xmark'] }];
+        }
       }
       return [
         { label: 'Dashboard', path: ROUTES.mentor.dashboard, icon: ['fas', 'house'] },
@@ -120,11 +163,12 @@ export class DashboardLayoutComponent {
         { label: 'Messages', path: ROUTES.mentor.messages, icon: ['fas', 'message'] },
         { label: 'Earnings', path: ROUTES.mentor.earnings, icon: ['fas', 'wallet'] },
         { label: 'Reports', path: ROUTES.mentor.reports, icon: ['fas', 'file-lines'] },
+        { label: 'My Reviews', path: ROUTES.mentor.reviews, icon: ['fas', 'star'] },
         { label: 'Settings', path: ROUTES.mentor.settings, icon: ['fas', 'gear'] },
       ];
     }
 
-    if (user.role === UserRole.Admin) {
+    if (role === UserRole.Admin) {
       return [
         { label: 'Dashboard', path: ROUTES.admin.dashboard, icon: ['fas', 'house'] },
         { label: 'Mentor Applications', path: ROUTES.admin.mentorApplications, icon: ['fas', 'user-check'] },

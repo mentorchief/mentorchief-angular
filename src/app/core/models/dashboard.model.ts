@@ -4,6 +4,8 @@ import type { User } from './user.model';
 /** Mentee dashboard */
 
 export interface ActiveMentorship {
+  /** Supabase UUID of the mentorship row — used for cancel/complete API calls */
+  mentorshipId?: string;
   mentorId: string;
   mentorName: string;
   mentorTitle: string;
@@ -49,6 +51,10 @@ export interface MentorStat {
 
 export interface PendingMentorshipRequest {
   id: number;
+  /** UUID from the Supabase mentorships table — used for accept/decline API calls */
+  mentorshipId?: string;
+  /** Supabase UUID of the mentee — used to match reports */
+  menteeUuid?: string;
   name: string;
   goal: string;
   message: string;
@@ -178,6 +184,8 @@ export interface ActiveMentorSummary {
 
 export interface PastMentorSummary {
   id: number;
+  /** Supabase UUID for the mentor — used to submit reviews via API */
+  mentorUuid?: string;
   name: string;
   title: string;
   image: string;
@@ -201,6 +209,7 @@ export interface MentorProfileReview {
   name: string;
   rating: number;
   text: string;
+  submittedAt?: string;
 }
 
 /** Mentor-written report about a mentee at the end of a subscription */
@@ -210,6 +219,8 @@ export interface MenteeReport {
   menteeId: string;
   mentorId: string;
   mentorName: string;
+  /** Mentee display name — populated by admin query join, used to avoid UUID display */
+  menteeName?: string;
   createdAt: string;
   summary: string;
   /** Overall rating 1–5 */
@@ -230,6 +241,8 @@ export interface MenteeReport {
 
 export interface MenteeListItem {
   id: number;
+  /** Supabase UUID of the mentee — used to match reports */
+  menteeUuid?: string;
   name: string;
   avatar: string;
   email: string;
@@ -248,6 +261,9 @@ export interface AdminPayment {
   mentor: string;
   amount: number;
   status: 'completed' | 'in_escrow' | 'disputed' | 'refunded';
+  /** Supabase UUIDs – used for release payment flow */
+  menteeId?: string;
+  mentorId?: string;
 }
 
 /** Combined dashboard state */

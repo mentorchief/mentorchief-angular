@@ -9,6 +9,6 @@ import type { Database } from '../models/database.types';
 export class SupabaseService {
   readonly client: SupabaseClient<Database> = createClient<Database>(
     environment.supabaseUrl,
-    environment.supabaseAnonKey,
+    environment.supabaseAnonKey
   );
 }

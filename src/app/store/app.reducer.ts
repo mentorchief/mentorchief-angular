@@ -9,6 +9,7 @@ import { menteeReducer } from './mentee/mentee.reducer';
 import { messagingReducer } from './messaging/messaging.reducer';
 import { reportsReducer } from './reports/reports.reducer';
 import { adminReducer } from './admin/admin.reducer';
+import { notificationsReducer } from './notifications/notifications.reducer';
 
 export const appReducers: ActionReducerMap<AppState> = {
   auth: authReducer,
@@ -20,4 +21,5 @@ export const appReducers: ActionReducerMap<AppState> = {
   messaging: messagingReducer,
   reports: reportsReducer,
   admin: adminReducer,
+  notifications: notificationsReducer,
 };

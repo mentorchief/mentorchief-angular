@@ -64,5 +64,11 @@ export interface User {
   status?: 'active' | 'suspended' | 'pending';
   /** Display join date (e.g. 'Jan 15, 2026'). */
   joinDate?: string;
+  /** For mentors: whether they are accepting new mentees. */
+  acceptingMentees?: boolean;
+  /** For mentors: payout account details. */
+  payoutAccount?: { type: 'bank' | 'instapay'; bankName?: string; accountNumber?: string; instapayNumber?: string };
+  /** Notification preferences — stored as JSON array in profiles table. */
+  notificationSettings?: { id: string; enabled: boolean }[];
 }
 

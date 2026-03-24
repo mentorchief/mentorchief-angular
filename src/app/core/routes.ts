@@ -9,6 +9,7 @@ export const ROUTES = {
   signup: '/signup',
   forgotPassword: '/forgot-password',
   resetPassword: '/reset-password',
+  suspended: '/suspended',
   verifyEmail: '/verify-email',
   browse: '/browse',
   howItWorks: '/how-it-works',
@@ -46,17 +47,22 @@ export const ROUTES = {
 
   /** Mentor dashboard */
   mentor: {
-    dashboard: '/dashboard/mentor',
+    dashboard: '/dashboard/mentor/home',
     pending: '/dashboard/mentor/pending',
     rejected: '/dashboard/mentor/rejected',
     myMentees: '/dashboard/mentor/my-mentees',
     messages: '/dashboard/mentor/messages',
     earnings: '/dashboard/mentor/earnings',
     reports: '/dashboard/mentor/reports',
+    reviews: '/dashboard/mentor/reviews',
     settings: '/dashboard/mentor/settings',
     report: (menteeId: string) => `/dashboard/mentor/report/${menteeId}`,
     reportView: (reportId: number) => `/dashboard/mentor/report-view/${reportId}`,
+    menteeReports: (menteeUuid: string, menteeName: string) => `/dashboard/mentor/mentee-reports/${menteeUuid}?name=${encodeURIComponent(menteeName)}`,
   },
+
+  /** Shared notifications center (all roles) */
+  notifications: '/dashboard/notifications',
 
   /** Admin dashboard */
   admin: {

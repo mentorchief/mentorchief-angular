@@ -3,22 +3,35 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Store } from '@ngrx/store';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, debounceTime, distinctUntilChanged, take, takeUntil } from 'rxjs';
+import { map } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.service';
 import { ToastService } from '../../../shared/services/toast.service';
-import { selectAllUnifiedPending, selectMenteeUnreadCounts, selectMyMenteesActive } from '../store/dashboard.selectors';
-import { selectAuthUser } from '../../auth/store/auth.selectors';
+import { selectAllUnifiedPending, selectMenteeUnreadCounts } from '../store/dashboard.selectors';
+import { selectAuthUser, selectAuthUserId } from '../../auth/store/auth.selectors';
 import { ROUTES } from '../../../core/routes';
 import { parseMenteeCapacity } from '../../../core/utils/mentor.utils';
 import { DEFAULT_MENTEE_CAPACITY } from '../../../core/constants';
-import { map } from 'rxjs';
 import { acceptMenteeRequest, acceptMentorshipRequest, declineMentorshipRequest, removeMenteeFromList } from '../store/dashboard.actions';
-import type { MenteeListItem } from '../../../core/models/dashboard.model';
+import { addConversation } from '../../../store/messaging/messaging.actions';
+import { AuthApiService } from '../../../core/services/auth-api.service';
 import type { UnifiedPendingItem } from '../store/dashboard.selectors';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 
-const ACTIVE_PAGE_SIZE = 10;
+interface MenteeRow {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  plan: string;
+  startDate: string;
+  status: string;
+  menteeUuid: string;
+  mentorshipId: string;
+}
+
+const PAGE_SIZE = 10;
 
 @Component({
   selector: 'mc-my-mentees-page',
@@ -35,7 +48,7 @@ const ACTIVE_PAGE_SIZE = 10;
       <div class="grid sm:grid-cols-3 gap-4 mb-8">
         <div class="bg-card rounded-lg border border-border p-5">
           <div class="text-muted-foreground text-sm mb-1">Active Mentees</div>
-          <div class="text-2xl text-foreground font-semibold">{{ (activeMentees$ | async)?.length ?? 0 }}</div>
+          <div class="text-2xl text-foreground font-semibold">{{ activeTotalCount }}</div>
         </div>
         <div class="bg-card rounded-lg border border-border p-5">
           <div class="text-muted-foreground text-sm mb-1">Pending Requests</div>
@@ -43,11 +56,11 @@ const ACTIVE_PAGE_SIZE = 10;
         </div>
         <div class="bg-card rounded-lg border border-border p-5">
           <div class="text-muted-foreground text-sm mb-1">Capacity</div>
-          <div class="text-2xl text-foreground font-semibold">{{ (activeMentees$ | async)?.length ?? 0 }}/{{ (mentorCapacity$ | async) ?? defaultCapacity }}</div>
+          <div class="text-2xl text-foreground font-semibold">{{ activeTotalCount }}/{{ (mentorCapacity$ | async) ?? defaultCapacity }}</div>
         </div>
       </div>
 
-      <!-- Pending Requests (same data as mentor dashboard) -->
+      <!-- Pending Requests (store-driven, small dataset) -->
       @if ((pendingItems$ | async)?.length) {
         <div class="mb-8">
           <h2 class="text-lg text-foreground mb-4">Pending Requests</h2>
@@ -63,12 +76,13 @@ const ACTIVE_PAGE_SIZE = 10;
                     <p class="text-muted-foreground text-sm">{{ item.detail }}</p>
                     <p class="text-muted-foreground text-xs mt-1">{{ item.source === 'request' ? 'Goal' : 'Requested' }}: {{ item.goalOrPlan }}</p>
                   </div>
-                  @if (item.latestReport) {
+                  @if (item.menteeUuid) {
                     <a
-                      [routerLink]="ROUTES.mentor.reportView(item.latestReport.id)"
+                      [routerLink]="['/dashboard/mentor/mentee-reports', item.menteeUuid]"
+                      [queryParams]="{ name: item.name }"
                       class="text-sm text-primary hover:underline shrink-0"
                     >
-                      View latest report
+                      View reports
                     </a>
                   }
                   <div class="flex gap-2">
@@ -94,7 +108,7 @@ const ACTIVE_PAGE_SIZE = 10;
         </div>
       }
 
-      <!-- Active Mentees -->
+      <!-- Active Mentees (BE-driven) -->
       <div>
         <h2 class="text-lg text-foreground mb-4">Active Mentees</h2>
         <div class="bg-card rounded-lg border border-border overflow-hidden">
@@ -103,69 +117,73 @@ const ACTIVE_PAGE_SIZE = 10;
               type="text"
               [ngModel]="activeSearchQuery"
               (ngModelChange)="onActiveSearchChange($event)"
-              placeholder="Search by name, email, plan..."
+              placeholder="Search by name, email..."
               class="w-full max-w-md px-4 py-2 bg-input-background border border-border rounded-md text-sm"
             />
           </div>
-          <table class="w-full">
-            <thead class="bg-muted/50">
-              <tr>
-                <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Mentee</th>
-                <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Plan</th>
-                <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Start Date</th>
-                <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (mentee of activeMenteesPaginated; track mentee.id) {
-                <tr class="border-b border-border last:border-0">
-                  <td class="px-5 py-4">
-                    <div class="flex items-center gap-3">
-                      <div class="relative">
-                        <div class="w-10 h-10 bg-secondary rounded-full flex items-center justify-center">
-                          <span class="text-secondary-foreground text-sm font-medium">{{ getInitials(mentee.name) }}</span>
+          @if (activeLoading) {
+            <div class="p-10 text-center text-muted-foreground text-sm">Loading mentees...</div>
+          } @else {
+            <table class="w-full">
+              <thead class="bg-muted/50">
+                <tr>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Mentee</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Plan</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Start Date</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (mentee of activeMentees; track mentee.id) {
+                  <tr class="border-b border-border last:border-0">
+                    <td class="px-5 py-4">
+                      <div class="flex items-center gap-3">
+                        <div class="relative">
+                          <div class="w-10 h-10 bg-secondary rounded-full flex items-center justify-center">
+                            <span class="text-secondary-foreground text-sm font-medium">{{ getInitials(mentee.name) }}</span>
+                          </div>
+                          @if (getUnreadCount(mentee) > 0) {
+                            <span class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-primary text-primary-foreground text-xs font-medium rounded-full">
+                              {{ getUnreadCount(mentee) > 99 ? '99+' : getUnreadCount(mentee) }}
+                            </span>
+                          }
                         </div>
-                        @if (getUnreadCount(mentee) > 0) {
-                          <span class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-primary text-primary-foreground text-xs font-medium rounded-full">
-                            {{ getUnreadCount(mentee) > 99 ? '99+' : getUnreadCount(mentee) }}
-                          </span>
+                        <div>
+                          <p class="text-foreground text-sm font-medium">{{ mentee.name }}</p>
+                          <p class="text-muted-foreground text-xs">{{ mentee.email }}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="px-5 py-4 text-sm text-foreground">{{ mentee.plan }}</td>
+                    <td class="px-5 py-4 text-sm text-muted-foreground">{{ mentee.startDate }}</td>
+                    <td class="px-5 py-4">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <a
+                          [routerLink]="ROUTES.mentor.messages"
+                          [queryParams]="{ mentee: mentee.name }"
+                          class="px-3 py-1.5 border border-border text-foreground rounded-md text-sm hover:bg-muted no-underline inline-block"
+                        >
+                          Message
+                        </a>
+                        @if (isPeriodExceeded(mentee)) {
+                          <a
+                            [routerLink]="['/dashboard/mentor/report', mentee.mentorshipId]"
+                            class="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs hover:opacity-90 no-underline inline-block"
+                          >
+                            End mentorship & add report
+                          </a>
                         }
                       </div>
-                      <div>
-                        <p class="text-foreground text-sm font-medium">{{ mentee.name }}</p>
-                        <p class="text-muted-foreground text-xs">{{ mentee.email }}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td class="px-5 py-4 text-sm text-foreground">{{ mentee.plan }}</td>
-                  <td class="px-5 py-4 text-sm text-muted-foreground">{{ mentee.startDate }}</td>
-                  <td class="px-5 py-4">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <a
-                        [routerLink]="ROUTES.mentor.messages"
-                        [queryParams]="{ mentee: mentee.name }"
-                        class="px-3 py-1.5 border border-border text-foreground rounded-md text-sm hover:bg-muted no-underline inline-block"
-                      >
-                        Message
-                      </a>
-                      @if (isPeriodExceeded(mentee)) {
-                        <a
-                          [routerLink]="['/dashboard/mentor/report', mentee.id]"
-                          class="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs hover:opacity-90 no-underline inline-block"
-                        >
-                          End mentorship & add report
-                        </a>
-                      }
-                    </div>
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
         </div>
         <div class="p-4">
           <mc-pagination
-            [totalItems]="activeMenteesFiltered.length"
+            [totalItems]="activeTotalCount"
             [pageSize]="activePageSize"
             [currentPage]="activePage"
             (pageChange)="onActivePageChange($event)"
@@ -181,35 +199,48 @@ export class MyMenteesPageComponent implements OnInit, OnDestroy {
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly authApi = inject(AuthApiService);
   private readonly destroy$ = new Subject<void>();
+  private readonly activeSearch$ = new Subject<string>();
 
   readonly ROUTES = ROUTES;
   readonly defaultCapacity = DEFAULT_MENTEE_CAPACITY;
   readonly pendingItems$ = this.store.select(selectAllUnifiedPending);
-  readonly activeMentees$ = this.store.select(selectMyMenteesActive);
-  readonly unreadCounts$ = this.store.select(selectMenteeUnreadCounts);
   readonly mentorCapacity$ = this.store.select(selectAuthUser).pipe(
     map((u) => parseMenteeCapacity(u?.menteeCapacity)),
   );
-  activeMenteesList: MenteeListItem[] = [];
+
   unreadCounts: { byId: Record<number, number>; byName: Record<string, number> } = { byId: {}, byName: {} };
   activeSearchQuery = '';
-  readonly activePageSize = ACTIVE_PAGE_SIZE;
+  readonly activePageSize = PAGE_SIZE;
   activePage = 1;
+  activeMentees: MenteeRow[] = [];
+  activeTotalCount = 0;
+  activeLoading = false;
+
+  private mentorId: string | null = null;
 
   ngOnInit(): void {
-    this.activeMentees$.pipe(takeUntil(this.destroy$)).subscribe((list) => {
-      this.activeMenteesList = list;
-      this.cdr.markForCheck();
+    this.activeSearch$.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntil(this.destroy$),
+    ).subscribe(() => {
+      this.activePage = 1;
+      this.fetchActiveMentees();
     });
-    this.unreadCounts$.pipe(takeUntil(this.destroy$)).subscribe((u) => {
+
+    this.store.select(selectMenteeUnreadCounts).pipe(takeUntil(this.destroy$)).subscribe((u) => {
       this.unreadCounts = u;
       this.cdr.markForCheck();
     });
-  }
 
-  getUnreadCount(mentee: MenteeListItem): number {
-    return this.unreadCounts.byId[mentee.id] ?? this.unreadCounts.byName[mentee.name] ?? 0;
+    this.store.select(selectAuthUserId).pipe(takeUntil(this.destroy$)).subscribe((id) => {
+      if (id && id !== this.mentorId) {
+        this.mentorId = id;
+        this.fetchActiveMentees();
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -217,38 +248,56 @@ export class MyMenteesPageComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  get activeMenteesFiltered(): MenteeListItem[] {
-    const list = this.activeMenteesList;
-    const q = this.activeSearchQuery.toLowerCase().trim();
-    if (!q) return list;
-    return list.filter((m) =>
-      m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) || m.plan.toLowerCase().includes(q)
-    );
-  }
-
-  get activeMenteesPaginated(): MenteeListItem[] {
-    const list = this.activeMenteesFiltered;
-    const start = (this.activePage - 1) * this.activePageSize;
-    return list.slice(start, start + this.activePageSize);
+  getUnreadCount(mentee: MenteeRow): number {
+    return this.unreadCounts.byName[mentee.name] ?? 0;
   }
 
   onActiveSearchChange(value: string): void {
     this.activeSearchQuery = value;
-    this.activePage = 1;
-    this.cdr.markForCheck();
+    this.activeSearch$.next(value);
   }
 
   onActivePageChange(page: number): void {
     this.activePage = page;
+    this.fetchActiveMentees();
+  }
+
+  private fetchActiveMentees(): void {
+    if (!this.mentorId) return;
+    this.activeLoading = true;
     this.cdr.markForCheck();
+
+    this.authApi.searchMentorMentees(this.mentorId, {
+      query: this.activeSearchQuery || undefined,
+      status: 'active',
+      page: this.activePage,
+      pageSize: this.activePageSize,
+    }).pipe(takeUntil(this.destroy$)).subscribe(({ data, count }) => {
+      this.activeMentees = data.map((row): MenteeRow => {
+        const profile = row.mentee_profile as Record<string, unknown> | null;
+        return {
+          id: String(row.id),
+          mentorshipId: String(row.id),
+          menteeUuid: row.mentee_id,
+          name: (profile?.['name'] as string) ?? 'Mentee',
+          email: (profile?.['email'] as string) ?? '',
+          avatar: (profile?.['avatar'] as string) ?? '',
+          plan: (row as Record<string, unknown>)['plan_name'] as string ?? row.goal ?? 'Standard',
+          startDate: row.started_at ? new Date(row.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—',
+          status: row.status,
+        };
+      });
+      this.activeTotalCount = count;
+      this.activeLoading = false;
+      this.cdr.markForCheck();
+    });
   }
 
   getInitials(name: string): string {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   }
 
-  /** True if the mentorship plan period (e.g. 1 month for Monthly, 3 for Quarterly) has ended. */
-  isPeriodExceeded(mentee: MenteeListItem): boolean {
+  isPeriodExceeded(mentee: MenteeRow): boolean {
     const start = new Date(mentee.startDate);
     if (Number.isNaN(start.getTime())) return false;
     const months = mentee.plan.toLowerCase().includes('quarter') ? 3 : 1;
@@ -258,14 +307,52 @@ export class MyMenteesPageComponent implements OnInit, OnDestroy {
   }
 
   onAcceptItem(item: UnifiedPendingItem): void {
-    if (item.source === 'request') {
+    if (item.source === 'request' && item.mentorshipId) {
+      this.authApi.acceptMentorship(item.mentorshipId).subscribe({
+        next: () => {
+          this.store.dispatch(acceptMentorshipRequest({
+            request: { id: item.id, name: item.name, goal: item.goalOrPlan, message: item.detail, rating: item.rating },
+          }));
+          this.createConversationForMentee(item);
+          this.toast.success(`${item.name} has been added to your mentees.`);
+          this.fetchActiveMentees(); // Refresh BE list
+        },
+        error: () => { this.toast.error('Failed to accept request. Please try again.'); },
+      });
+    } else if (item.source === 'request') {
       this.store.dispatch(acceptMentorshipRequest({
         request: { id: item.id, name: item.name, goal: item.goalOrPlan, message: item.detail, rating: item.rating },
       }));
+      this.toast.success(`${item.name} has been added to your mentees.`);
     } else {
       this.store.dispatch(acceptMenteeRequest({ menteeId: item.id }));
+      this.toast.success(`${item.name} has been added to your mentees.`);
     }
-    this.toast.success(`${item.name} has been added to your mentees.`);
+  }
+
+  private createConversationForMentee(item: UnifiedPendingItem): void {
+    if (!item.menteeUuid) return;
+    this.store.select(selectAuthUser).pipe(take(1)).subscribe((user) => {
+      if (!user) return;
+      this.authApi.getOrCreateConversation(user.id, item.menteeUuid!).subscribe({
+        next: (conv) => {
+          this.store.dispatch(addConversation({
+            conversation: {
+              id: conv.id,
+              mentorId: conv.mentor_id,
+              mentorProfileId: conv.mentor_id,
+              menteeId: conv.mentee_id,
+              mentorName: user.name,
+              menteeName: item.name,
+              lastMessage: conv.last_message ?? '',
+              lastTimestamp: '',
+              status: 'active',
+              messages: [],
+            },
+          }));
+        },
+      });
+    });
   }
 
   async onDeclineItem(item: UnifiedPendingItem): Promise<void> {
@@ -276,12 +363,20 @@ export class MyMenteesPageComponent implements OnInit, OnDestroy {
       cancelLabel: 'Keep request',
       variant: 'danger',
     });
-    if (confirmed) {
-      if (item.source === 'request') {
-        this.store.dispatch(declineMentorshipRequest({ requestId: item.id }));
-      } else {
-        this.store.dispatch(removeMenteeFromList({ menteeId: item.id }));
-      }
+    if (!confirmed) return;
+    if (item.source === 'request' && item.mentorshipId) {
+      this.authApi.declineMentorship(item.mentorshipId).subscribe({
+        next: () => {
+          this.store.dispatch(declineMentorshipRequest({ requestId: item.id }));
+          this.toast.success(`Request from ${item.name} has been declined.`);
+        },
+        error: () => { this.toast.error('Failed to decline request. Please try again.'); },
+      });
+    } else if (item.source === 'request') {
+      this.store.dispatch(declineMentorshipRequest({ requestId: item.id }));
+      this.toast.success(`Request from ${item.name} has been declined.`);
+    } else {
+      this.store.dispatch(removeMenteeFromList({ menteeId: item.id }));
       this.toast.success(`Request from ${item.name} has been declined.`);
     }
   }

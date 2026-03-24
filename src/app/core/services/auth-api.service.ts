@@ -1,12 +1,21 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, from, of, throwError } from 'rxjs';
-import { map, switchMap } from 'rxjs/operators';
+import { map, switchMap, take } from 'rxjs/operators';
 import type { LoginPayload, SignupPayload } from '../models/auth.model';
 import { MentorApprovalStatus, UserRole, type User } from '../models/user.model';
 import { SupabaseService } from './supabase.service';
 import type { Database } from '../models/database.types';
+import type { ChatConversation, ChatMessageCore } from '../models/chat.model';
+import type { MenteeReport, MentorProfileReview } from '../models/dashboard.model';
 
 type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+type MentorshipRow = Database['public']['Tables']['mentorships']['Row'];
+type MessageRow = Database['public']['Tables']['messages']['Row'];
+type ConversationRow = Database['public']['Tables']['conversations']['Row'];
+type MenteeReportRow = Database['public']['Tables']['mentee_reports']['Row'];
+type MentorReviewRow = Database['public']['Tables']['mentor_reviews']['Row'];
+type NotificationRow = Database['public']['Tables']['notifications']['Row'];
+type PaymentRow = Database['public']['Tables']['payments']['Row'];
 
 function profileRowToUser(row: ProfileRow): User {
   return {
@@ -35,6 +44,9 @@ function profileRowToUser(row: ProfileRow): User {
     status: row.status,
     joinDate: row.join_date ?? undefined,
     experiences: (row.experiences as unknown as User['experiences']) ?? undefined,
+    acceptingMentees: row.accepting_mentees ?? true,
+    payoutAccount: (row.payout_account as unknown as User['payoutAccount']) ?? undefined,
+    notificationSettings: (row.notification_settings as unknown as User['notificationSettings']) ?? undefined,
   };
 }
 
@@ -68,7 +80,16 @@ function userToProfileUpdate(
   if (user.status !== undefined) update.status = user.status;
   if (user.experiences !== undefined)
     update.experiences = user.experiences as unknown as Database['public']['Tables']['profiles']['Update']['experiences'];
+  if (user.acceptingMentees !== undefined)
+    (update as Record<string, unknown>)['accepting_mentees'] = user.acceptingMentees;
+  if (user.payoutAccount !== undefined)
+    (update as Record<string, unknown>)['payout_account'] = user.payoutAccount;
   return update;
+}
+
+export interface MentorshipWithProfiles extends MentorshipRow {
+  mentor_profile?: ProfileRow | null;
+  mentee_profile?: ProfileRow | null;
 }
 
 @Injectable({
@@ -76,6 +97,38 @@ function userToProfileUpdate(
 })
 export class AuthApiService {
   private readonly supabase = inject(SupabaseService);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private get db(): any { return this.supabase.client; }
+
+  /** Returns the current authenticated user's UUID, or throws if not authenticated. */
+  private getCurrentUserId(): Observable<string> {
+    return from(this.supabase.client.auth.getSession()).pipe(
+      map(({ data }) => {
+        const id = data.session?.user?.id;
+        if (!id) throw new Error('Not authenticated.');
+        return id;
+      }),
+    );
+  }
+
+  /** Asserts that the currently authenticated user has the required role. Throws otherwise. */
+  private assertRole(requiredRole: UserRole): Observable<string> {
+    return this.getCurrentUserId().pipe(
+      switchMap((userId) =>
+        from(
+          (this.db.from('profiles').select('role').eq('id', userId).single()) as Promise<{ data: { role: string } | null; error: unknown }>,
+        ).pipe(
+          map(({ data }) => {
+            if (!data || data.role !== requiredRole) {
+              throw new Error(`Forbidden: requires role ${requiredRole}.`);
+            }
+            return userId;
+          }),
+        ),
+      ),
+    );
+  }
 
   /** Typed wrapper: runs a profiles .update() query and returns the updated row */
   private updateProfileRow(
@@ -104,7 +157,7 @@ export class AuthApiService {
           return throwError(() => new Error(error?.message ?? 'Login failed.'));
         }
         return from(
-          this.supabase.client.from('profiles').select('*').eq('id', data.user.id).single(),
+          this.db.from('profiles').select('*').eq('id', data.user.id).single() as Promise<{ data: ProfileRow | null; error: unknown }>,
         ).pipe(
           map(({ data: profile, error: profileError }) => {
             if (profileError || !profile) throw new Error('Profile not found.');
@@ -140,7 +193,7 @@ export class AuthApiService {
         // Fetch the auto-created profile (created by DB trigger on_auth_user_created)
         // then patch mentor_approval_status if needed
         const fetchProfile$ = from(
-          this.supabase.client.from('profiles').select('*').eq('id', userId).single(),
+          this.db.from('profiles').select('*').eq('id', userId).single() as Promise<{ data: ProfileRow | null; error: unknown }>,
         );
         if (payload.role !== UserRole.Mentor) {
           return fetchProfile$.pipe(
@@ -191,7 +244,7 @@ export class AuthApiService {
 
   getProfileById(userId: string): Observable<User | null> {
     return from(
-      this.supabase.client.from('profiles').select('*').eq('id', userId).single(),
+      this.db.from('profiles').select('*').eq('id', userId).single() as Promise<{ data: ProfileRow | null; error: unknown }>,
     ).pipe(
       map(({ data, error }) => {
         if (error || !data) return null;
@@ -202,7 +255,25 @@ export class AuthApiService {
 
   getAllProfiles(): Observable<User[]> {
     return from(
-      this.supabase.client.from('profiles').select('*').order('created_at'),
+      this.db.from('profiles').select('*').order('created_at') as Promise<{ data: ProfileRow[] | null; error: unknown }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return data.map(profileRowToUser);
+      }),
+    );
+  }
+
+  getApprovedMentors(): Observable<User[]> {
+    return from(
+      (this.db
+        .from('profiles')
+        .select('*')
+        .eq('role', 'mentor')
+        .eq('registered', true)
+        .eq('mentor_approval_status', 'approved')
+        .neq('status', 'suspended')
+        .order('name')) as Promise<{ data: ProfileRow[] | null; error: unknown }>,
     ).pipe(
       map(({ data, error }) => {
         if (error || !data) return [];
@@ -212,7 +283,8 @@ export class AuthApiService {
   }
 
   approveMentor(userId: string): Observable<User | null> {
-    return this.updateProfileRow({ mentor_approval_status: 'approved' }, userId).pipe(
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() => this.updateProfileRow({ mentor_approval_status: 'approved' }, userId)),
       map(({ data, error }) => {
         if (error || !data) return null;
         return profileRowToUser(data);
@@ -221,7 +293,8 @@ export class AuthApiService {
   }
 
   rejectMentor(userId: string): Observable<User | null> {
-    return this.updateProfileRow({ mentor_approval_status: 'rejected' }, userId).pipe(
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() => this.updateProfileRow({ mentor_approval_status: 'rejected' }, userId)),
       map(({ data, error }) => {
         if (error || !data) return null;
         return profileRowToUser(data);
@@ -229,17 +302,776 @@ export class AuthApiService {
     );
   }
 
+  updateUserStatus(userId: string, status: 'active' | 'suspended'): Observable<User | null> {
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() => this.updateProfileRow({ status }, userId)),
+      map(({ data, error }) => {
+        if (error || !data) return null;
+        return profileRowToUser(data);
+      }),
+    );
+  }
+
+  updateMentorAccepting(userId: string, accepting: boolean): Observable<void> {
+    return this.getCurrentUserId().pipe(
+      switchMap((callerId) => {
+        if (callerId !== userId) throw new Error('Forbidden: cannot update another user\'s settings.');
+        return this.updateProfileRow({ accepting_mentees: accepting }, userId);
+      }),
+      map(() => undefined),
+    );
+  }
+
+  updateMentorPayoutAccount(userId: string, payoutAccount: Record<string, unknown>): Observable<void> {
+    return this.getCurrentUserId().pipe(
+      switchMap((callerId) => {
+        if (callerId !== userId) throw new Error('Forbidden: cannot update another user\'s payout account.');
+        return this.updateProfileRow({ payout_account: payoutAccount }, userId);
+      }),
+      map(() => undefined),
+    );
+  }
+
+  getPlatformConfig(): Observable<{
+    platformFeePercent: number;
+    escrowDays: number;
+    minSubscriptionPrice: number;
+    maxSubscriptionPrice: number;
+    maintenanceMode: boolean;
+  } | null> {
+    return from(
+      (this.db.from('platform_config').select('*').eq('id', 1).maybeSingle()) as Promise<{ data: Record<string, unknown> | null; error: unknown }>,
+    ).pipe(
+      map(({ data }) => {
+        if (!data) return null;
+        return {
+          platformFeePercent: (data['platform_fee_percent'] as number) ?? 10,
+          escrowDays: (data['escrow_days'] as number) ?? 30,
+          minSubscriptionPrice: (data['min_subscription_price'] as number) ?? 50,
+          maxSubscriptionPrice: (data['max_subscription_price'] as number) ?? 1000,
+          maintenanceMode: (data['maintenance_mode'] as boolean) ?? false,
+        };
+      }),
+    );
+  }
+
+  saveNotificationSettings(userId: string, settings: { id: string; enabled: boolean }[]): Observable<void> {
+    return this.getCurrentUserId().pipe(
+      switchMap((callerId) => {
+        if (callerId !== userId) throw new Error('Forbidden: cannot update another user\'s notification settings.');
+        return this.updateProfileRow({ notification_settings: settings as unknown as Record<string, unknown> }, userId);
+      }),
+      map(() => undefined),
+    );
+  }
+
+  savePlatformConfig(config: {
+    platformFeePercent?: number;
+    escrowDays?: number;
+    minSubscriptionPrice?: number;
+    maxSubscriptionPrice?: number;
+    maintenanceMode?: boolean;
+  }): Observable<void> {
+    const row: Record<string, unknown> = { id: 1 };
+    if (config.platformFeePercent !== undefined) row['platform_fee_percent'] = config.platformFeePercent;
+    if (config.escrowDays !== undefined) row['escrow_days'] = config.escrowDays;
+    if (config.minSubscriptionPrice !== undefined) row['min_subscription_price'] = config.minSubscriptionPrice;
+    if (config.maxSubscriptionPrice !== undefined) row['max_subscription_price'] = config.maxSubscriptionPrice;
+    if (config.maintenanceMode !== undefined) row['maintenance_mode'] = config.maintenanceMode;
+    return from(
+      (this.db.from('platform_config').upsert(row)) as Promise<{ error: unknown }>,
+    ).pipe(
+      map(({ error }) => {
+        if (error) throw error;
+      }),
+    );
+  }
+
   getPendingMentors(): Observable<User[]> {
     return from(
-      this.supabase.client
+      (this.db
         .from('profiles')
         .select('*')
         .eq('role', 'mentor')
-        .eq('mentor_approval_status', 'pending'),
+        .eq('registered', true)
+        .eq('mentor_approval_status', 'pending')) as Promise<{ data: ProfileRow[] | null; error: unknown }>,
     ).pipe(
       map(({ data, error }) => {
         if (error || !data) return [];
         return data.map(profileRowToUser);
+      }),
+    );
+  }
+
+  // ─── Mentorship methods ───────────────────────────────────────────────────
+
+  requestMentorship(
+    mentorId: string,
+    menteeId: string,
+    goal: string,
+    message: string,
+    planName: string,
+    amount: number,
+  ): Observable<MentorshipRow> {
+    const now = new Date().toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('mentorships')
+        .insert({
+          mentor_id: mentorId,
+          mentee_id: menteeId,
+          status: 'pending',
+          goal,
+          message,
+          progress: 0,
+          months_active: 0,
+          started_at: null,
+          completed_at: null,
+        })
+        .select()
+        .single() as Promise<{ data: MentorshipRow | null; error: { message: string } | null }>,
+    ).pipe(
+      switchMap(({ data: mentorshipData, error: mentorshipError }) => {
+        if (mentorshipError || !mentorshipData) {
+          return throwError(() => new Error(mentorshipError?.message ?? 'Failed to create mentorship request.'));
+        }
+        // Also create a subscription record
+        const nextBillingDate = new Date(now);
+        nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+        return from(
+          db.from('subscriptions').insert({
+            mentee_id: menteeId,
+            mentor_id: mentorId,
+            plan_name: planName,
+            amount,
+            currency: 'USD',
+            status: 'active',
+            next_billing_date: nextBillingDate.toISOString(),
+            started_at: now,
+          }) as Promise<{ data: unknown; error: unknown }>,
+        ).pipe(
+          map(() => mentorshipData),
+        );
+      }),
+    );
+  }
+
+  getMentorships(userId: string): Observable<MentorshipWithProfiles[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('mentorships')
+        .select('id, mentor_id, mentee_id, status, goal, message, progress, months_active, started_at, completed_at, created_at, mentor_profile:profiles!mentorships_mentor_id_fkey(id, name, job_title, company, avatar), mentee_profile:profiles!mentorships_mentee_id_fkey(id, name, email, avatar)')
+        .or(`mentor_id.eq.${userId},mentee_id.eq.${userId}`)
+        .order('created_at', { ascending: false }) as Promise<{ data: MentorshipWithProfiles[] | null; error: { message: string } | null }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return data;
+      }),
+    );
+  }
+
+  acceptMentorship(mentorshipId: string): Observable<MentorshipRow | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.getCurrentUserId().pipe(
+      switchMap((callerId) =>
+        from(
+          db.from('mentorships')
+            .update({ status: 'active', started_at: new Date().toISOString() })
+            .eq('id', mentorshipId)
+            .eq('mentor_id', callerId)  // frontend: only the mentor of this row
+            .eq('status', 'pending')    // frontend: can only accept pending requests
+            .select()
+            .single() as Promise<{ data: MentorshipRow | null; error: unknown }>,
+        ),
+      ),
+      map(({ data, error }) => {
+        if (error || !data) return null;
+        return data;
+      }),
+    );
+  }
+
+  declineMentorship(mentorshipId: string): Observable<MentorshipRow | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.getCurrentUserId().pipe(
+      switchMap((callerId) =>
+        from(
+          db.from('mentorships')
+            .update({ status: 'cancelled' })
+            .eq('id', mentorshipId)
+            .eq('mentor_id', callerId)  // frontend: only the mentor of this row
+            .select()
+            .single() as Promise<{ data: MentorshipRow | null; error: unknown }>,
+        ),
+      ),
+      map(({ data, error }) => {
+        if (error || !data) return null;
+        return data;
+      }),
+    );
+  }
+
+  cancelMentorship(mentorshipId: string): Observable<MentorshipRow | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.getCurrentUserId().pipe(
+      switchMap((callerId) =>
+        from(
+          db.from('mentorships')
+            .update({ status: 'cancelled' })
+            .eq('id', mentorshipId)
+            .eq('mentee_id', callerId)  // frontend: only the mentee of this row can cancel
+            .select()
+            .single() as Promise<{ data: MentorshipRow | null; error: unknown }>,
+        ),
+      ),
+      map(({ data, error }) => {
+        if (error || !data) return null;
+        return data;
+      }),
+    );
+  }
+
+  getMentorshipForMenteeAndMentor(menteeId: string, mentorId: string): Observable<MentorshipRow | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('mentorships')
+        .select('*')
+        .eq('mentee_id', menteeId)
+        .eq('mentor_id', mentorId)
+        .in('status', ['pending', 'active'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle() as Promise<{ data: MentorshipRow | null; error: unknown }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return null;
+        return data;
+      }),
+    );
+  }
+
+  // ─── Messaging methods ────────────────────────────────────────────────────
+
+  getOrCreateConversation(mentorId: string, menteeId: string): Observable<ConversationRow> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('conversations')
+        .select('*')
+        .eq('mentor_id', mentorId)
+        .eq('mentee_id', menteeId)
+        .maybeSingle() as Promise<{ data: ConversationRow | null; error: unknown }>,
+    ).pipe(
+      switchMap(({ data: existing }) => {
+        if (existing) return of(existing);
+        return from(
+          db.from('conversations')
+            .insert({ mentor_id: mentorId, mentee_id: menteeId, last_message: null, last_timestamp: null })
+            .select()
+            .single() as Promise<{ data: ConversationRow | null; error: { message: string } | null }>,
+        ).pipe(
+          map(({ data, error }) => {
+            if (error || !data) throw new Error(error?.message ?? 'Failed to create conversation.');
+            return data;
+          }),
+        );
+      }),
+    );
+  }
+
+  getConversations(userId: string): Observable<ChatConversation[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('conversations')
+        .select('*, mentor_profile:profiles!conversations_mentor_id_fkey(id, name, avatar), mentee_profile:profiles!conversations_mentee_id_fkey(id, name, avatar)')
+        .or(`mentor_id.eq.${userId},mentee_id.eq.${userId}`)
+        .order('updated_at', { ascending: false }) as Promise<{ data: (ConversationRow & { mentor_profile: { id: string; name: string; avatar: string | null } | null; mentee_profile: { id: string; name: string; avatar: string | null } | null })[] | null; error: unknown }>,
+    ).pipe(
+      switchMap(({ data: convRows, error }) => {
+        if (error || !convRows || convRows.length === 0) return of([]);
+        const convIds = convRows.map((c) => c.id);
+        return from(
+          db.from('messages')
+            .select('conversation_id, sender_id, text, created_at')
+            .in('conversation_id', convIds)
+            .order('created_at', { ascending: true }) as Promise<{ data: { conversation_id: string; sender_id: string; text: string; created_at: string }[] | null; error: unknown }>,
+        ).pipe(
+          map(({ data: msgRows }) => {
+            type MsgSlim = { conversation_id: string; sender_id: string; text: string; created_at: string };
+            const msgsByConv: Record<string, MsgSlim[]> = {};
+            for (const msg of msgRows ?? []) {
+              if (!msgsByConv[msg.conversation_id]) msgsByConv[msg.conversation_id] = [];
+              msgsByConv[msg.conversation_id].push(msg);
+            }
+            return convRows.map((conv) => {
+              const mentorProfile = conv.mentor_profile;
+              const menteeProfile = conv.mentee_profile;
+              const msgs: ChatMessageCore[] = (msgsByConv[conv.id] ?? []).map((m, idx) => ({
+                id: idx + 1,
+                senderId: m.sender_id,
+                text: m.text,
+                timestamp: new Date(m.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+              }));
+              const chatConv: ChatConversation = {
+                id: conv.id,
+                mentorId: conv.mentor_id,
+                mentorProfileId: conv.mentor_id,
+                menteeId: conv.mentee_id,
+                mentorName: mentorProfile?.name ?? 'Mentor',
+                menteeName: menteeProfile?.name ?? 'Mentee',
+                lastMessage: conv.last_message ?? '',
+                lastTimestamp: conv.last_timestamp
+                  ? new Date(conv.last_timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                  : '',
+                status: 'active',
+                messages: msgs.map((m) => ({
+                  ...m,
+                  senderName: m.senderId === conv.mentor_id ? (mentorProfile?.name ?? 'Mentor') : (menteeProfile?.name ?? 'Mentee'),
+                  senderRole: m.senderId === conv.mentor_id ? UserRole.Mentor : UserRole.Mentee,
+                })),
+              };
+              return chatConv;
+            });
+          }),
+        );
+      }),
+    );
+  }
+
+  sendMessage(conversationId: string, _ignoredSenderId: string, text: string): Observable<MessageRow> {
+    const now = new Date().toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    // Always derive sender_id from the authenticated session — never trust the caller-supplied value
+    return this.getCurrentUserId().pipe(
+      switchMap((callerId) =>
+        from(
+          db.from('messages')
+            .insert({ conversation_id: conversationId, sender_id: callerId, text })
+            .select()
+            .single() as Promise<{ data: MessageRow | null; error: { message: string } | null }>,
+        ),
+      ),
+      switchMap(({ data: msgData, error: msgError }) => {
+        if (msgError || !msgData) {
+          return throwError(() => new Error(msgError?.message ?? 'Failed to send message.'));
+        }
+        return from(
+          db.from('conversations')
+            .update({ last_message: text, last_timestamp: now })
+            .eq('id', conversationId) as Promise<{ data: unknown; error: unknown }>,
+        ).pipe(map(() => msgData));
+      }),
+    );
+  }
+
+  // ─── Reports methods ──────────────────────────────────────────────────────
+
+  insertMenteeReport(reportData: {
+    menteeId: string;
+    mentorId: string;
+    mentorName: string;
+    summary: string;
+    rating: number;
+    behaviour: string;
+    strengths: string[];
+    weaknesses: string[];
+    areasToDevelop: string[];
+    recommendations: string;
+  }): Observable<MenteeReportRow> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('mentee_reports')
+        .insert({
+          mentee_id: reportData.menteeId,
+          mentor_id: reportData.mentorId,
+          mentor_name: reportData.mentorName,
+          summary: reportData.summary,
+          rating: reportData.rating,
+          behaviour: reportData.behaviour,
+          strengths: reportData.strengths,
+          weaknesses: reportData.weaknesses,
+          areas_to_develop: reportData.areasToDevelop,
+          recommendations: reportData.recommendations,
+        })
+        .select()
+        .single() as Promise<{ data: MenteeReportRow | null; error: { message: string } | null }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) throw new Error(error?.message ?? 'Failed to insert mentee report.');
+        return data;
+      }),
+    );
+  }
+
+  getMenteeReports(userId: string): Observable<MenteeReport[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('mentee_reports')
+        .select('*')
+        .or(`mentee_id.eq.${userId},mentor_id.eq.${userId}`)
+        .order('created_at', { ascending: false }) as Promise<{ data: MenteeReportRow[] | null; error: unknown }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return this.mapReportRows(data);
+      }),
+    );
+  }
+
+  getReportsForMentee(menteeId: string): Observable<MenteeReport[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('mentee_reports')
+        .select('*')
+        .eq('mentee_id', menteeId)
+        .order('created_at', { ascending: false }) as Promise<{ data: MenteeReportRow[] | null; error: unknown }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return this.mapReportRows(data);
+      }),
+    );
+  }
+
+  getAllMenteeReports(): Observable<MenteeReport[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('mentee_reports')
+        .select('*, mentee_profile:profiles!mentee_id(name)')
+        .order('created_at', { ascending: false }) as Promise<{ data: (MenteeReportRow & { mentee_profile?: { name: string } | null })[] | null; error: unknown }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return data.map((r, idx): MenteeReport => ({
+          ...this.mapReportRows([r])[0],
+          id: idx + 1,
+          menteeName: r.mentee_profile?.name,
+        }));
+      }),
+    );
+  }
+
+  private mapReportRows(data: MenteeReportRow[]): MenteeReport[] {
+    return data.map((r, idx): MenteeReport => ({
+      id: idx + 1,
+      menteeId: r.mentee_id,
+      mentorId: r.mentor_id,
+      mentorName: r.mentor_name,
+      createdAt: r.created_at,
+      summary: r.summary,
+      rating: r.rating,
+      behaviour: r.behaviour,
+      strengths: r.strengths,
+      weaknesses: r.weaknesses,
+      areasToDevelop: r.areas_to_develop,
+      recommendations: r.recommendations,
+    }));
+  }
+
+  submitMentorReview(
+    mentorId: string,
+    menteeId: string,
+    rating: number,
+    comment: string,
+  ): Observable<MentorReviewRow> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('mentor_reviews')
+        .upsert(
+          { mentor_id: mentorId, mentee_id: menteeId, rating, comment, submitted_at: new Date().toISOString() },
+          { onConflict: 'mentor_id,mentee_id' },
+        )
+        .select()
+        .single() as Promise<{ data: MentorReviewRow | null; error: { message: string } | null }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) throw new Error(error?.message ?? 'Failed to submit review.');
+        return data;
+      }),
+    );
+  }
+
+  // ─── Notifications methods ────────────────────────────────────────────────
+
+  getNotifications(userId: string): Observable<NotificationRow[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('notifications')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50) as Promise<{ data: NotificationRow[] | null; error: unknown }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return data;
+      }),
+    );
+  }
+
+  createNotification(notification: {
+    userId: string;
+    type: NotificationRow['type'];
+    title: string;
+    body: string;
+    metadata?: Record<string, unknown>;
+  }): Observable<NotificationRow> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('notifications')
+        .insert({
+          user_id: notification.userId,
+          type: notification.type,
+          title: notification.title,
+          body: notification.body,
+          metadata: notification.metadata ?? {},
+        })
+        .select()
+        .single() as Promise<{ data: NotificationRow | null; error: { message: string } | null }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) throw new Error(error?.message ?? 'Failed to create notification.');
+        return data;
+      }),
+    );
+  }
+
+  markNotificationRead(notificationId: string): Observable<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('notifications')
+        .update({ read: true })
+        .eq('id', notificationId) as Promise<{ error: unknown }>,
+    ).pipe(map(() => undefined));
+  }
+
+  markAllNotificationsRead(userId: string): Observable<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('notifications')
+        .update({ read: true })
+        .eq('user_id', userId)
+        .eq('read', false) as Promise<{ error: unknown }>,
+    ).pipe(map(() => undefined));
+  }
+
+  // ─── Payments methods ─────────────────────────────────────────────────────
+
+  getMentorPayments(mentorId: string): Observable<(PaymentRow & { mentee_profile: { name: string } | null })[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('payments')
+        .select('id, mentor_id, mentee_id, amount, status, month, plan_name, release_date, paid_to_mentor, created_at, mentee_profile:profiles!payments_mentee_id_fkey(name)')
+        .eq('mentor_id', mentorId)
+        .order('created_at', { ascending: false }) as Promise<{
+          data: (PaymentRow & { mentee_profile: { name: string } | null })[] | null;
+          error: unknown;
+        }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return data;
+      }),
+    );
+  }
+
+  getAllPayments(): Observable<(PaymentRow & { mentee_profile: { name: string } | null; mentor_profile: { name: string } | null })[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('payments')
+        .select('*, mentee_profile:profiles!payments_mentee_id_fkey(name), mentor_profile:profiles!payments_mentor_id_fkey(name)')
+        .order('created_at', { ascending: false }) as Promise<{
+          data: (PaymentRow & { mentee_profile: { name: string } | null; mentor_profile: { name: string } | null })[] | null;
+          error: unknown;
+        }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return data;
+      }),
+    );
+  }
+
+  releasePayment(paymentId: string): Observable<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('payments')
+        .update({ status: 'released', paid_to_mentor: true, release_date: new Date().toISOString().split('T')[0] })
+        .eq('id', paymentId) as Promise<{ error: unknown }>,
+    ).pipe(
+      map(({ error }) => {
+        if (error) throw error;
+      }),
+    );
+  }
+
+  // ─── BE-driven search/filter/pagination methods ─────────────────────────
+
+  searchMentorReports(
+    mentorId: string,
+    params: { query?: string; ratingMin?: number; ratingMax?: number; page?: number; pageSize?: number },
+  ): Observable<{ data: (MenteeReportRow & { mentee_profile?: { name: string } | null })[]; count: number }> {
+    const pg = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const rangeStart = (pg - 1) * pageSize;
+    const rangeEnd = rangeStart + pageSize - 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    let q = db.from('mentee_reports')
+      .select('*, mentee_profile:profiles!mentee_id(name)', { count: 'exact' })
+      .eq('mentor_id', mentorId)
+      .order('created_at', { ascending: false });
+    if (params.query) {
+      q = q.or(`summary.ilike.%${params.query}%,mentor_name.ilike.%${params.query}%`);
+    }
+    if (params.ratingMin != null) q = q.gte('rating', params.ratingMin);
+    if (params.ratingMax != null) q = q.lte('rating', params.ratingMax);
+    q = q.range(rangeStart, rangeEnd);
+    return from(
+      q as Promise<{ data: (MenteeReportRow & { mentee_profile?: { name: string } | null })[] | null; count: number | null; error: unknown }>,
+    ).pipe(
+      map(({ data, count, error }) => ({
+        data: error || !data ? [] : data,
+        count: count ?? 0,
+      })),
+    );
+  }
+
+  searchMentorMentees(
+    mentorId: string,
+    params: { query?: string; status?: string; page?: number; pageSize?: number },
+  ): Observable<{ data: (MentorshipRow & { mentee_profile?: ProfileRow | null })[]; count: number }> {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const rangeFrom = (page - 1) * pageSize;
+    const rangeTo = rangeFrom + pageSize - 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    let q = db.from('mentorships')
+      .select('*, mentee_profile:profiles!mentorships_mentee_id_fkey(id, name, email, avatar)', { count: 'exact' })
+      .eq('mentor_id', mentorId)
+      .order('created_at', { ascending: false });
+    if (params.status) q = q.eq('status', params.status);
+    q = q.range(rangeFrom, rangeTo);
+    return from(
+      q as Promise<{ data: (MentorshipRow & { mentee_profile?: ProfileRow | null })[] | null; count: number | null; error: unknown }>,
+    ).pipe(
+      map(({ data, count, error }) => {
+        let rows = error || !data ? [] : data;
+        if (params.query) {
+          const lq = params.query.toLowerCase();
+          rows = rows.filter((r) => {
+            const name = (r.mentee_profile as Record<string, unknown> | null)?.['name'] as string | undefined;
+            const email = (r.mentee_profile as Record<string, unknown> | null)?.['email'] as string | undefined;
+            return (name?.toLowerCase().includes(lq)) || (email?.toLowerCase().includes(lq));
+          });
+        }
+        return { data: rows, count: params.query ? rows.length : (count ?? 0) };
+      }),
+    );
+  }
+
+  searchConversations(
+    userId: string,
+    query: string,
+  ): Observable<string[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    // Search conversations by participant name
+    return from(
+      db.from('conversations')
+        .select('id, mentor_profile:profiles!conversations_mentor_id_fkey(name), mentee_profile:profiles!conversations_mentee_id_fkey(name)')
+        .or(`mentor_id.eq.${userId},mentee_id.eq.${userId}`) as Promise<{
+          data: { id: string; mentor_profile: { name: string } | null; mentee_profile: { name: string } | null }[] | null;
+          error: unknown;
+        }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        const lq = query.toLowerCase();
+        return data
+          .filter((c) =>
+            c.mentor_profile?.name?.toLowerCase().includes(lq) ||
+            c.mentee_profile?.name?.toLowerCase().includes(lq),
+          )
+          .map((c) => c.id);
+      }),
+    );
+  }
+
+  searchMentorPayments(
+    mentorId: string,
+    params: { query?: string; status?: string; page?: number; pageSize?: number },
+  ): Observable<{ data: (PaymentRow & { mentee_profile: { name: string } | null })[]; count: number }> {
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 10;
+    const rangeFrom = (page - 1) * pageSize;
+    const rangeTo = rangeFrom + pageSize - 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    let q = db.from('payments')
+      .select('id, mentor_id, mentee_id, amount, status, month, plan_name, release_date, paid_to_mentor, created_at, mentee_profile:profiles!payments_mentee_id_fkey(name)', { count: 'exact' })
+      .eq('mentor_id', mentorId)
+      .order('created_at', { ascending: false });
+    if (params.status) q = q.eq('status', params.status);
+    q = q.range(rangeFrom, rangeTo);
+    return from(
+      q as Promise<{ data: (PaymentRow & { mentee_profile: { name: string } | null })[] | null; count: number | null; error: unknown }>,
+    ).pipe(
+      map(({ data, count, error }) => {
+        let rows = error || !data ? [] : data;
+        if (params.query) {
+          const lq = params.query.toLowerCase();
+          rows = rows.filter((r) =>
+            r.mentee_profile?.name?.toLowerCase().includes(lq) ||
+            r.month?.toLowerCase().includes(lq) ||
+            r.plan_name?.toLowerCase().includes(lq),
+          );
+        }
+        return { data: rows, count: params.query ? rows.length : (count ?? 0) };
+      }),
+    );
+  }
+
+  getMentorReviews(mentorId: string): Observable<MentorProfileReview[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('mentor_reviews')
+        .select('*, mentee_profile:profiles!mentor_reviews_mentee_id_fkey(name)')
+        .eq('mentor_id', mentorId)
+        .order('submitted_at', { ascending: false }) as Promise<{ data: (MentorReviewRow & { mentee_profile: { name: string } | null })[] | null; error: unknown }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return data.map((r): MentorProfileReview => ({
+          mentorId: r.mentor_id,
+          name: r.mentee_profile?.name ?? 'Mentee',
+          rating: r.rating,
+          text: r.comment ?? '',
+          submittedAt: r.submitted_at ?? undefined,
+        }));
       }),
     );
   }

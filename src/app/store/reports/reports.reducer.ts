@@ -2,11 +2,9 @@ import { createReducer, on } from '@ngrx/store';
 import type { MenteeReport } from '../../core/models/dashboard.model';
 import { addMenteeReport, loadReports, resetReports, submitMentorReview } from './reports.actions';
 import { reportsInitialState } from './reports.state';
-import { initialMenteeReports } from './reports.data';
-import { initialMentorProfileReviews } from './reports.data';
 
 export const reportsReducer = createReducer(
-  { ...reportsInitialState, menteeReports: initialMenteeReports, mentorProfileReviews: initialMentorProfileReviews },
+  reportsInitialState,
   on(loadReports, (_, { menteeReviews, mentorProfileReviews, menteeReports }) => ({
     menteeReviews,
     mentorProfileReviews,

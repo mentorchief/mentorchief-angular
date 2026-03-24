@@ -1,5 +1,5 @@
 import { createAction, props } from '@ngrx/store';
-import type { MentorStat, PendingMentorshipRequest } from '../../core/models/dashboard.model';
+import type { MentorPayoutAccount, MentorStat, PendingMentorshipRequest } from '../../core/models/dashboard.model';
 
 export const loadMentorData = createAction('[Mentor] Load Data', props<{
   stats: MentorStat[];
@@ -7,6 +7,9 @@ export const loadMentorData = createAction('[Mentor] Load Data', props<{
   activeMentees: { id: number; name: string; goal: string; progress: number; monthsActive: number }[];
   earnings: { month: string; amount: number; status: string; mentees: number }[];
   myMentees: { id: number; name: string; avatar: string; email: string; plan: string; startDate: string; progress: number; status: 'active' | 'pending' | 'completed' }[];
+  acceptingNewMentees?: boolean;
+  payoutAccount?: MentorPayoutAccount;
+  notificationSettings?: { id: string; enabled: boolean }[];
 }>());
 
 export const declineMentorshipRequest = createAction('[Mentor] Decline Request', props<{ requestId: number }>());
@@ -14,6 +17,8 @@ export const declineMentorshipRequest = createAction('[Mentor] Decline Request',
 export const acceptMentorshipRequest = createAction('[Mentor] Accept Request', props<{ request: PendingMentorshipRequest }>());
 
 export const setMentorPendingRequests = createAction('[Mentor] Set Pending Requests', props<{ requests: PendingMentorshipRequest[] }>());
+
+export const setMentorMentees = createAction('[Mentor] Set Mentees', props<{ myMentees: { id: number; menteeUuid?: string; name: string; avatar: string; email: string; plan: string; startDate: string; progress: number; status: 'active' | 'pending' | 'completed' }[] }>());
 
 export const removeMenteeFromList = createAction('[Mentor] Remove Mentee', props<{ menteeId: number }>());
 

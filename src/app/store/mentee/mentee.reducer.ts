@@ -1,10 +1,9 @@
 import { createReducer, on } from '@ngrx/store';
 import { cancelMenteeSubscription, loadMenteeData, resetMentee } from './mentee.actions';
 import { menteeInitialState, type MenteeState } from './mentee.state';
-import { MENTEE_SEED } from './mentee.seed';
 
 export const menteeReducer = createReducer<MenteeState>(
-  { ...menteeInitialState, ...MENTEE_SEED },
+  menteeInitialState,
   on(loadMenteeData, (_, payload) => ({ ...menteeInitialState, ...payload })),
   on(resetMentee, () => menteeInitialState),
   on(cancelMenteeSubscription, (state) => {

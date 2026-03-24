@@ -7,6 +7,7 @@ import type { MenteeState } from './mentee/mentee.state';
 import type { MessagingState } from './messaging/messaging.state';
 import type { ReportsState } from './reports/reports.state';
 import type { AdminState } from './admin/admin.state';
+import type { NotificationsState } from './notifications/notifications.state';
 
 /**
  * DATA FLOW — Entity Ownership
@@ -30,4 +31,5 @@ export interface AppState {
   messaging: MessagingState;
   reports: ReportsState;
   admin: AdminState;
+  notifications: NotificationsState;
 }

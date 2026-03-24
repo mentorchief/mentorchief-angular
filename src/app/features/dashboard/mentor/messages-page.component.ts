@@ -1,9 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, ElementRef,
+  inject, OnDestroy, OnInit, signal, ViewChild,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Store } from '@ngrx/store';
-import { take } from 'rxjs';
+import { Subject, debounceTime, distinctUntilChanged, take, takeUntil } from 'rxjs';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 import type { ConversationListItem } from '../../../core/models/chat.model';
@@ -14,9 +17,12 @@ import {
   selectSelectedConversation,
 } from '../store/dashboard.selectors';
 import { clearConversationUnread, selectConversation as selectConversationAction, sendChatMessage } from '../store/dashboard.actions';
-import { selectAuthUser } from '../../auth/store/auth.selectors';
+import { selectAuthUser, selectAuthUserId } from '../../auth/store/auth.selectors';
+import { AuthApiService } from '../../../core/services/auth-api.service';
+import { RealtimeService } from '../../../core/services/realtime.service';
 
 const CONV_PAGE_SIZE = 10;
+const TYPING_TIMEOUT_MS = 2500;
 
 @Component({
   selector: 'mc-mentor-messages-page',
@@ -39,30 +45,34 @@ const CONV_PAGE_SIZE = 10;
           </div>
         </div>
         <div class="flex-1 overflow-y-auto">
-          @for (conv of paginatedConversations(); track conv.id) {
-            <button
-              (click)="selectConversation(conv)"
-              [class.bg-muted]="selectedConversation()?.id === conv.id"
-              class="w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left border-b border-border"
-            >
-              <div class="relative">
-                <div class="w-10 h-10 bg-secondary rounded-full flex items-center justify-center">
-                  <span class="text-secondary-foreground text-sm font-medium">{{ getInitials(conv.name) }}</span>
+          @if (searchLoading()) {
+            <div class="p-4 text-center text-muted-foreground text-sm">Searching...</div>
+          } @else {
+            @for (conv of paginatedConversations(); track conv.id) {
+              <button
+                (click)="selectConversation(conv)"
+                [class.bg-muted]="selectedConversation()?.id === conv.id"
+                class="w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left border-b border-border"
+              >
+                <div class="relative">
+                  <div class="w-10 h-10 bg-secondary rounded-full flex items-center justify-center">
+                    <span class="text-secondary-foreground text-sm font-medium">{{ getInitials(conv.name) }}</span>
+                  </div>
+                  @if (conv.unreadCount && conv.unreadCount > 0) {
+                    <span class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-primary text-primary-foreground text-xs font-medium rounded-full">
+                      {{ conv.unreadCount > 99 ? '99+' : conv.unreadCount }}
+                    </span>
+                  }
                 </div>
-                @if (conv.unreadCount && conv.unreadCount > 0) {
-                  <span class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-primary text-primary-foreground text-xs font-medium rounded-full">
-                    {{ conv.unreadCount > 99 ? '99+' : conv.unreadCount }}
-                  </span>
-                }
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between">
-                  <span class="text-foreground font-medium text-sm">{{ conv.name }}</span>
-                  <span class="text-muted-foreground text-xs">{{ conv.timestamp }}</span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between">
+                    <span class="text-foreground font-medium text-sm">{{ conv.name }}</span>
+                    <span class="text-muted-foreground text-xs">{{ conv.timestamp }}</span>
+                  </div>
+                  <p class="text-muted-foreground text-sm truncate mt-0.5">{{ conv.lastMessage }}</p>
                 </div>
-                <p class="text-muted-foreground text-sm truncate mt-0.5">{{ conv.lastMessage }}</p>
-              </div>
-            </button>
+              </button>
+            }
           }
         </div>
         <div class="p-3 border-t border-border shrink-0">
@@ -85,12 +95,16 @@ const CONV_PAGE_SIZE = 10;
             </div>
             <div>
               <h3 class="text-foreground font-medium">{{ sel.menteeName }}</h3>
-              <p class="text-muted-foreground text-xs">Mentee</p>
+              @if (otherIsTyping()) {
+                <p class="text-xs text-primary animate-pulse">typing…</p>
+              } @else {
+                <p class="text-muted-foreground text-xs">Mentee</p>
+              }
             </div>
           </div>
 
           <!-- Messages -->
-          <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          <div #messagesContainer class="flex-1 overflow-y-auto p-4 space-y-4">
             @for (msg of sel.messages; track msg.id) {
               <div [class]="msg.senderRole === UserRole.Mentor ? 'flex justify-end' : 'flex justify-start'">
                 <div
@@ -109,6 +123,18 @@ const CONV_PAGE_SIZE = 10;
                 </div>
               </div>
             }
+            <!-- Typing bubble -->
+            @if (otherIsTyping()) {
+              <div class="flex justify-start">
+                <div class="bg-muted rounded-lg px-4 py-2">
+                  <span class="flex gap-1 items-center h-5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style="animation-delay:0ms"></span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style="animation-delay:150ms"></span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style="animation-delay:300ms"></span>
+                  </span>
+                </div>
+              </div>
+            }
           </div>
 
           <!-- Input -->
@@ -117,7 +143,7 @@ const CONV_PAGE_SIZE = 10;
               <input
                 type="text"
                 [ngModel]="newMessage()"
-                (ngModelChange)="newMessage.set($event)"
+                (ngModelChange)="onInputChange($event)"
                 (keydown.enter)="sendMessage()"
                 placeholder="Type a message..."
                 class="flex-1 px-4 py-2.5 bg-input-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring/20"
@@ -146,9 +172,16 @@ const CONV_PAGE_SIZE = 10;
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MentorMessagesPageComponent implements OnInit {
+export class MentorMessagesPageComponent implements OnInit, OnDestroy {
+  @ViewChild('messagesContainer') private messagesContainer?: ElementRef<HTMLDivElement>;
+
   private readonly store = inject(Store);
   private readonly route = inject(ActivatedRoute);
+  private readonly authApi = inject(AuthApiService);
+  private readonly realtime = inject(RealtimeService);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly destroy$ = new Subject<void>();
+  private readonly searchInput$ = new Subject<string>();
   readonly UserRole = UserRole;
 
   readonly conversations = this.store.selectSignal(selectMentorConversationListItems);
@@ -159,15 +192,20 @@ export class MentorMessagesPageComponent implements OnInit {
   convPage = signal(1);
   convSearchQuery = signal('');
   newMessage = signal('');
+  otherIsTyping = signal(false);
+  searchLoading = signal(false);
+  /** IDs returned by BE search — null means "no search active, show all" */
+  searchResultIds = signal<string[] | null>(null);
+
+  private broadcastTyping: ((isTyping: boolean) => void) | null = null;
+  private typingTimer: ReturnType<typeof setTimeout> | null = null;
+  private typingStopTimer: ReturnType<typeof setTimeout> | null = null;
 
   conversationsFiltered = computed(() => {
     const list = this.conversations();
-    const q = this.convSearchQuery().toLowerCase().trim();
-    if (!q) return list;
-    return list.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q),
-    );
+    const matchIds = this.searchResultIds();
+    if (matchIds === null) return list;
+    return list.filter((c) => matchIds.includes(c.id));
   });
 
   paginatedConversations = computed(() => {
@@ -176,30 +214,103 @@ export class MentorMessagesPageComponent implements OnInit {
     return list.slice(start, start + this.convPageSize);
   });
 
-  onConvSearchChange(value: string): void {
-    this.convSearchQuery.set(value);
-    this.convPage.set(1);
-  }
-
-  onConvPageChange(page: number): void {
-    this.convPage.set(page);
-  }
-
   ngOnInit(): void {
+    // Debounced BE search
+    this.searchInput$.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntil(this.destroy$),
+    ).subscribe((query) => {
+      if (!query.trim()) {
+        this.searchResultIds.set(null);
+        this.searchLoading.set(false);
+        this.convPage.set(1);
+        this.cdr.markForCheck();
+        return;
+      }
+      this.searchLoading.set(true);
+      this.cdr.markForCheck();
+      const user = this.currentUser();
+      if (!user) return;
+      this.authApi.searchConversations(user.id, query).pipe(takeUntil(this.destroy$)).subscribe((ids) => {
+        this.searchResultIds.set(ids);
+        this.searchLoading.set(false);
+        this.convPage.set(1);
+        this.cdr.markForCheck();
+      });
+    });
+
     const mentee = this.route.snapshot.queryParamMap.get('mentee');
     if (mentee) {
       this.store.select(selectConversationIdForMentee(mentee)).pipe(take(1)).subscribe((convId) => {
         if (convId) {
           this.store.dispatch(selectConversationAction({ conversationId: convId }));
           this.store.dispatch(clearConversationUnread({ conversationId: convId }));
+          this.setupTypingChannel(convId);
         }
       });
     }
   }
 
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+    const sel = this.selectedConversation();
+    if (sel) this.realtime.unsubscribeFromTyping(sel.id);
+    if (this.typingTimer) clearTimeout(this.typingTimer);
+    if (this.typingStopTimer) clearTimeout(this.typingStopTimer);
+  }
+
+  onConvSearchChange(value: string): void {
+    this.convSearchQuery.set(value);
+    this.searchInput$.next(value);
+  }
+
+  onConvPageChange(page: number): void {
+    this.convPage.set(page);
+  }
+
   selectConversation(conv: ConversationListItem): void {
+    const prev = this.selectedConversation();
+    if (prev) this.realtime.unsubscribeFromTyping(prev.id);
     this.store.dispatch(selectConversationAction({ conversationId: conv.id }));
     this.store.dispatch(clearConversationUnread({ conversationId: conv.id }));
+    this.otherIsTyping.set(false);
+    this.setupTypingChannel(conv.id);
+  }
+
+  private setupTypingChannel(conversationId: string): void {
+    const user = this.currentUser();
+    if (!user) return;
+    this.broadcastTyping = this.realtime.subscribeToTyping(
+      conversationId,
+      user.id,
+      (_, isTyping) => {
+        this.otherIsTyping.set(isTyping);
+        if (isTyping) {
+          if (this.typingStopTimer) clearTimeout(this.typingStopTimer);
+          this.typingStopTimer = setTimeout(() => {
+            this.otherIsTyping.set(false);
+            this.cdr.markForCheck();
+          }, TYPING_TIMEOUT_MS + 500);
+        }
+        this.cdr.markForCheck();
+      },
+    );
+  }
+
+  onInputChange(value: string): void {
+    this.newMessage.set(value);
+    if (this.broadcastTyping && value.length > 0) {
+      this.broadcastTyping(true);
+      if (this.typingTimer) clearTimeout(this.typingTimer);
+      this.typingTimer = setTimeout(() => {
+        if (this.broadcastTyping) this.broadcastTyping(false);
+      }, TYPING_TIMEOUT_MS);
+    } else if (this.broadcastTyping && value.length === 0) {
+      if (this.typingTimer) clearTimeout(this.typingTimer);
+      this.broadcastTyping(false);
+    }
   }
 
   sendMessage(): void {
@@ -207,17 +318,27 @@ export class MentorMessagesPageComponent implements OnInit {
     const sel = this.selectedConversation();
     const user = this.currentUser();
     if (!text || !sel || !user) return;
-    this.store.dispatch(
-      sendChatMessage({
-        conversationId: sel.id,
-        message: {
-          senderId: user.id,
-          text,
-          timestamp: 'Just now',
-        },
-      }),
-    );
     this.newMessage.set('');
+    if (this.broadcastTyping) this.broadcastTyping(false);
+    if (this.typingTimer) clearTimeout(this.typingTimer);
+
+    this.authApi.sendMessage(sel.id, user.id, text).subscribe({
+      next: () => {
+        this.store.dispatch(
+          sendChatMessage({
+            conversationId: sel.id,
+            message: { senderId: user.id, text, timestamp: 'Just now' },
+          }),
+        );
+        setTimeout(() => {
+          const el = this.messagesContainer?.nativeElement;
+          if (el) el.scrollTop = el.scrollHeight;
+        }, 50);
+      },
+      error: () => {
+        this.newMessage.set(text);
+      },
+    });
   }
 
   getInitials(name: string): string {

@@ -3,10 +3,9 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Store } from '@ngrx/store';
 import { combineLatest, map } from 'rxjs';
-import { MENTORS } from '../../../core/data/mentors.data';
-import type { Mentor } from '../../../core/models/mentor.model';
 import type { AppState } from '../../../store/app.state';
 import { selectMentorProfileReviews } from '../../dashboard/store/dashboard.selectors';
+import { selectActiveMentorsAsMentor } from '../../../store/users/users.selectors';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 
 @Component({
@@ -14,7 +13,7 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
   standalone: true,
   imports: [CommonModule, RouterLink, FontAwesomeModule],
   template: `
-    @if (mentor) {
+    @if (mentor$ | async; as mentor) {
       <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <a
           [routerLink]="['/mentor', mentor.id]"
@@ -65,7 +64,15 @@ export class MentorReviewsPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly store = inject(Store<AppState>);
 
-  mentor: Mentor | undefined;
+  readonly mentor$ = combineLatest([
+    this.store.select(selectActiveMentorsAsMentor),
+    this.route.paramMap,
+  ]).pipe(
+    map(([mentors, params]) => {
+      const id = params.get('id');
+      return id ? (mentors.find((m) => m.id === id) ?? null) : null;
+    }),
+  );
 
   readonly profileReviews$ = combineLatest([
     this.store.select(selectMentorProfileReviews),
@@ -76,11 +83,6 @@ export class MentorReviewsPageComponent {
       return id ? reviews.filter((r) => r.mentorId === id) : [];
     }),
   );
-
-  constructor() {
-    const id = this.route.snapshot.paramMap.get('id');
-    this.mentor = MENTORS.find((m) => m.id === id);
-  }
 
   getInitials(name: string): string {
     return name.split(' ').map((n) => n[0]).join('').toUpperCase();

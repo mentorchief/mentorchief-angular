@@ -26,4 +26,9 @@ export const setMentorUnread = createAction(
   props<{ conversationId: string; count: number }>(),
 );
 
+export const addConversation = createAction(
+  '[Messaging] Add Conversation',
+  props<{ conversation: ChatConversation }>(),
+);
+
 export const resetMessaging = createAction('[Messaging] Reset');

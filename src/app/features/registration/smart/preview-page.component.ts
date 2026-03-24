@@ -344,14 +344,6 @@ export class PreviewPageComponent {
     sessionStorage.removeItem('mentorchief_signup_temp');
     this.store.dispatch(resetData());
     this.toast.success('Registration complete! Welcome to Mentorchief.');
-
-    setTimeout(() => {
-      this.isSubmitting = false;
-      if (this.data.role === UserRole.Mentor) {
-        void this.router.navigate([ROUTES.mentor.pending]);
-      } else {
-        void this.router.navigate([ROUTES.browse]);
-      }
-    }, 800);
+    this.isSubmitting = false;
   }
 }

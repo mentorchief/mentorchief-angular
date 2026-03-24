@@ -1,4 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, ElementRef,
+  inject, OnDestroy, signal, ViewChild,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
@@ -12,8 +15,11 @@ import {
 } from '../store/dashboard.selectors';
 import { selectConversation as selectConversationAction, sendChatMessage } from '../store/dashboard.actions';
 import { selectAuthUser } from '../../auth/store/auth.selectors';
+import { AuthApiService } from '../../../core/services/auth-api.service';
+import { RealtimeService } from '../../../core/services/realtime.service';
 
 const CONV_PAGE_SIZE = 10;
+const TYPING_TIMEOUT_MS = 2500;
 
 @Component({
   selector: 'mc-mentee-messages-page',
@@ -84,12 +90,16 @@ const CONV_PAGE_SIZE = 10;
             </div>
             <div>
               <h3 class="text-foreground font-medium">{{ sel.mentorName }}</h3>
-              <p class="text-muted-foreground text-xs">Mentor</p>
+              @if (otherIsTyping()) {
+                <p class="text-xs text-primary animate-pulse">typing…</p>
+              } @else {
+                <p class="text-muted-foreground text-xs">Mentor</p>
+              }
             </div>
           </div>
 
           <!-- Messages -->
-          <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          <div #messagesContainer class="flex-1 overflow-y-auto p-4 space-y-4">
             @for (msg of sel.messages; track msg.id) {
               <div [class]="msg.senderRole === UserRole.Mentee ? 'flex justify-end' : 'flex justify-start'">
                 <div
@@ -108,6 +118,18 @@ const CONV_PAGE_SIZE = 10;
                 </div>
               </div>
             }
+            <!-- Typing bubble -->
+            @if (otherIsTyping()) {
+              <div class="flex justify-start">
+                <div class="bg-muted rounded-lg px-4 py-2">
+                  <span class="flex gap-1 items-center h-5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style="animation-delay:0ms"></span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style="animation-delay:150ms"></span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style="animation-delay:300ms"></span>
+                  </span>
+                </div>
+              </div>
+            }
           </div>
 
           <!-- Input -->
@@ -116,7 +138,7 @@ const CONV_PAGE_SIZE = 10;
               <input
                 type="text"
                 [ngModel]="newMessage()"
-                (ngModelChange)="newMessage.set($event)"
+                (ngModelChange)="onInputChange($event)"
                 (keydown.enter)="sendMessage()"
                 placeholder="Type a message..."
                 class="flex-1 px-4 py-2.5 bg-input-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring/20"
@@ -145,8 +167,13 @@ const CONV_PAGE_SIZE = 10;
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MenteeMessagesPageComponent {
+export class MenteeMessagesPageComponent implements OnDestroy {
+  @ViewChild('messagesContainer') private messagesContainer?: ElementRef<HTMLDivElement>;
+
   private readonly store = inject(Store);
+  private readonly authApi = inject(AuthApiService);
+  private readonly realtime = inject(RealtimeService);
+  private readonly cdr = inject(ChangeDetectorRef);
   readonly UserRole = UserRole;
 
   readonly conversations = this.store.selectSignal(selectMenteeConversationListItems);
@@ -157,14 +184,18 @@ export class MenteeMessagesPageComponent {
   convPage = signal(1);
   convSearchQuery = signal('');
   newMessage = signal('');
+  otherIsTyping = signal(false);
+
+  private broadcastTyping: ((isTyping: boolean) => void) | null = null;
+  private typingTimer: ReturnType<typeof setTimeout> | null = null;
+  private typingStopTimer: ReturnType<typeof setTimeout> | null = null;
 
   conversationsFiltered = computed(() => {
     const list = this.conversations();
     const q = this.convSearchQuery().toLowerCase().trim();
     if (!q) return list;
     return list.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q),
+      (c) => c.name.toLowerCase().includes(q) || c.lastMessage.toLowerCase().includes(q),
     );
   });
 
@@ -173,6 +204,13 @@ export class MenteeMessagesPageComponent {
     const start = (this.convPage() - 1) * this.convPageSize;
     return list.slice(start, start + this.convPageSize);
   });
+
+  ngOnDestroy(): void {
+    const sel = this.selectedConversation();
+    if (sel) this.realtime.unsubscribeFromTyping(sel.id);
+    if (this.typingTimer) clearTimeout(this.typingTimer);
+    if (this.typingStopTimer) clearTimeout(this.typingStopTimer);
+  }
 
   onConvSearchChange(value: string): void {
     this.convSearchQuery.set(value);
@@ -184,7 +222,45 @@ export class MenteeMessagesPageComponent {
   }
 
   selectConversation(conv: ConversationListItem): void {
+    const prev = this.selectedConversation();
+    if (prev) this.realtime.unsubscribeFromTyping(prev.id);
     this.store.dispatch(selectConversationAction({ conversationId: conv.id }));
+    this.otherIsTyping.set(false);
+    this.setupTypingChannel(conv.id);
+  }
+
+  private setupTypingChannel(conversationId: string): void {
+    const user = this.currentUser();
+    if (!user) return;
+    this.broadcastTyping = this.realtime.subscribeToTyping(
+      conversationId,
+      user.id,
+      (_, isTyping) => {
+        this.otherIsTyping.set(isTyping);
+        if (isTyping) {
+          if (this.typingStopTimer) clearTimeout(this.typingStopTimer);
+          this.typingStopTimer = setTimeout(() => {
+            this.otherIsTyping.set(false);
+            this.cdr.markForCheck();
+          }, TYPING_TIMEOUT_MS + 500);
+        }
+        this.cdr.markForCheck();
+      },
+    );
+  }
+
+  onInputChange(value: string): void {
+    this.newMessage.set(value);
+    if (this.broadcastTyping && value.length > 0) {
+      this.broadcastTyping(true);
+      if (this.typingTimer) clearTimeout(this.typingTimer);
+      this.typingTimer = setTimeout(() => {
+        if (this.broadcastTyping) this.broadcastTyping(false);
+      }, TYPING_TIMEOUT_MS);
+    } else if (this.broadcastTyping && value.length === 0) {
+      if (this.typingTimer) clearTimeout(this.typingTimer);
+      this.broadcastTyping(false);
+    }
   }
 
   sendMessage(): void {
@@ -192,17 +268,27 @@ export class MenteeMessagesPageComponent {
     const sel = this.selectedConversation();
     const user = this.currentUser();
     if (!text || !sel || !user) return;
-    this.store.dispatch(
-      sendChatMessage({
-        conversationId: sel.id,
-        message: {
-          senderId: user.id,
-          text,
-          timestamp: 'Just now',
-        },
-      }),
-    );
     this.newMessage.set('');
+    if (this.broadcastTyping) this.broadcastTyping(false);
+    if (this.typingTimer) clearTimeout(this.typingTimer);
+
+    this.authApi.sendMessage(sel.id, user.id, text).subscribe({
+      next: () => {
+        this.store.dispatch(
+          sendChatMessage({
+            conversationId: sel.id,
+            message: { senderId: user.id, text, timestamp: 'Just now' },
+          }),
+        );
+        setTimeout(() => {
+          const el = this.messagesContainer?.nativeElement;
+          if (el) el.scrollTop = el.scrollHeight;
+        }, 50);
+      },
+      error: () => {
+        this.newMessage.set(text);
+      },
+    });
   }
 
   getInitials(name: string): string {

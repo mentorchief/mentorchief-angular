@@ -1,16 +1,18 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { Store } from '@ngrx/store';
-import { take } from 'rxjs';
+import { forkJoin, of, take, Subject, switchMap } from 'rxjs';
+import { catchError, takeUntil } from 'rxjs/operators';
 import type { AppState } from '../../../store/app.state';
 import { selectMyMentees } from '../store/dashboard.selectors';
-import { selectAuthUserId } from '../../auth/store/auth.selectors';
+import { selectAuthUser } from '../../auth/store/auth.selectors';
 import { addMenteeReport, markMenteeCompleted } from '../store/dashboard.actions';
 import { ToastService } from '../../../shared/services/toast.service';
+import { AuthApiService } from '../../../core/services/auth-api.service';
 import type { MenteeListItem } from '../../../core/models/dashboard.model';
-import { ROLE_DISPLAY_LABELS, UserRole } from '../../../core/models/user.model';
+import { UserRole } from '../../../core/models/user.model';
 import { ROUTES } from '../../../core/routes';
 
 @Component({
@@ -159,17 +161,20 @@ import { ROUTES } from '../../../core/routes';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MentorReportFormPageComponent implements OnInit {
+export class MentorReportFormPageComponent implements OnInit, OnDestroy {
   readonly ROUTES = ROUTES;
   private readonly store = inject(Store<AppState>);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly fb = inject(FormBuilder);
   private readonly toast = inject(ToastService);
+  private readonly authApi = inject(AuthApiService);
   private readonly cdr = inject(ChangeDetectorRef);
 
+  private readonly destroy$ = new Subject<void>();
   mentee: MenteeListItem | null = null;
   mentorUserId: string | null = null;
+  mentorName: string = '';
   submitting = false;
 
   form: FormGroup = this.fb.group({
@@ -182,9 +187,15 @@ export class MentorReportFormPageComponent implements OnInit {
     recommendations: ['', Validators.required],
   });
 
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
   ngOnInit(): void {
-    this.store.select(selectAuthUserId).pipe(take(1)).subscribe((id) => {
-      this.mentorUserId = id;
+    this.store.select(selectAuthUser).pipe(take(1)).subscribe((user) => {
+      this.mentorUserId = user?.id ?? null;
+      this.mentorName = user?.name ?? '';
     });
     const menteeId = this.route.snapshot.paramMap.get('menteeId');
     const id = menteeId ? parseInt(menteeId, 10) : NaN;
@@ -208,32 +219,97 @@ export class MentorReportFormPageComponent implements OnInit {
 
   onSubmit(): void {
     const m = this.mentee;
-    if (!m || this.form.invalid) return;
+    if (!m || this.form.invalid || !this.mentorUserId) return;
     this.submitting = true;
     const v = this.form.getRawValue();
-    const toLines = (s: string) =>
-      s
-        ? s
-            .split('\n')
-            .map((l) => l.trim())
-            .filter(Boolean)
-        : undefined;
-    this.store.dispatch(
-      addMenteeReport({
-        menteeId: String(m.id),
-        mentorId: this.mentorUserId ?? '',
-        mentorName: ROLE_DISPLAY_LABELS[UserRole.Mentor],
-        summary: v.summary,
-        rating: v.rating ?? undefined,
-        behaviour: v.behaviour || undefined,
-        strengths: toLines(v.strengths),
-        weaknesses: toLines(v.weaknesses),
-        areasToDevelop: toLines(v.areasToDevelop),
-        recommendations: v.recommendations || undefined,
-      }),
+    const toLines = (s: string): string[] =>
+      s ? s.split('\n').map((l) => l.trim()).filter(Boolean) : [];
+
+    // We need the actual mentee UUID (not the numeric list id).
+    // The mentee list uses numeric ids but the mentee's Supabase uuid is in the email field
+    // or we look it up from conversations. For now we store the mentee UUID via the report form.
+    // The mentee id used when submitting is derived from sessions loaded from Supabase.
+    // We resolve by finding the mentee UUID from the mentorships (stored in myMentees email field).
+    const menteeUuid = m.email; // email field stores the Supabase UUID after Supabase integration
+
+    this.authApi.insertMenteeReport({
+      menteeId: menteeUuid || String(m.id),
+      mentorId: this.mentorUserId,
+      mentorName: this.mentorName,
+      summary: v.summary,
+      rating: v.rating ?? 0,
+      behaviour: v.behaviour ?? '',
+      strengths: toLines(v.strengths),
+      weaknesses: toLines(v.weaknesses),
+      areasToDevelop: toLines(v.areasToDevelop),
+      recommendations: v.recommendations ?? '',
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (reportRow) => {
+        this.store.dispatch(
+          addMenteeReport({
+            menteeId: menteeUuid || String(m.id),
+            mentorId: this.mentorUserId ?? '',
+            mentorName: this.mentorName,
+            summary: v.summary,
+            rating: v.rating ?? undefined,
+            behaviour: v.behaviour || undefined,
+            strengths: toLines(v.strengths),
+            weaknesses: toLines(v.weaknesses),
+            areasToDevelop: toLines(v.areasToDevelop),
+            recommendations: v.recommendations || undefined,
+          }),
+        );
+        this.store.dispatch(markMenteeCompleted({ menteeId: m.id }));
+
+        // Send notifications: mentee gets notified their report is ready,
+        // admins get notified a report was submitted and payment can be released.
+        this.sendReportNotifications(menteeUuid || String(m.id), m.name, reportRow.id);
+
+        this.toast.success(`Report saved and ${m.name}'s mentorship marked as completed.`);
+        this.router.navigate([ROUTES.mentor.myMentees]);
+      },
+      error: () => {
+        this.submitting = false;
+        this.toast.error('Failed to save report. Please try again.');
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  private sendReportNotifications(menteeUuid: string, menteeName: string, reportId: string): void {
+    const mentorId = this.mentorUserId;
+    if (!mentorId) return;
+
+    // Notify mentee their report is available
+    const notifyMentee$ = this.authApi.createNotification({
+      userId: menteeUuid,
+      type: 'report_submitted',
+      title: 'Your mentorship report is ready',
+      body: `${this.mentorName} has submitted your end-of-mentorship report. View it in your Reports section.`,
+      metadata: { reportId, mentorId },
+    }).pipe(catchError(() => of(null)));
+
+    // Get all admins and notify them
+    const notifyAdmins$ = this.authApi.getAllProfiles().pipe(
+      catchError(() => of([])),
     );
-    this.store.dispatch(markMenteeCompleted({ menteeId: m.id }));
-    this.toast.success(`Report saved and ${m.name}'s mentorship marked as completed.`);
-    this.router.navigate([ROUTES.mentor.myMentees]);
+
+    forkJoin([notifyMentee$, notifyAdmins$]).pipe(
+      switchMap(([, allUsers]) => {
+        const admins = allUsers.filter((u) => u.role === UserRole.Admin);
+        if (!admins.length) return of(null);
+        return forkJoin(admins.map((admin) =>
+          this.authApi.createNotification({
+            userId: admin.id,
+            type: 'report_submitted',
+            title: 'Mentorship report submitted',
+            body: `${this.mentorName} submitted a report for mentee ${menteeName}. Review and release payment when ready.`,
+            metadata: { reportId, mentorId, menteeId: menteeUuid, menteeName },
+          }).pipe(catchError(() => of(null))),
+        ));
+      }),
+      catchError(() => of(null)),
+      takeUntil(this.destroy$),
+    ).subscribe();
   }
 }

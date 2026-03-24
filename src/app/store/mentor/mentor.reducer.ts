@@ -10,24 +10,26 @@ import {
   resetMentor,
   setMentorAcceptingNewMentees,
   setMentorNotificationSetting,
+  setMentorMentees,
   setMentorPendingRequests,
   updateMentorPayoutAccount,
 } from './mentor.actions';
 import { defaultPayoutAccount, defaultNotificationSettings, mentorInitialState, type MentorState } from './mentor.state';
-import { MENTOR_SEED } from './mentor.seed';
 
 export const mentorReducer = createReducer<MentorState>(
-  { ...mentorInitialState, ...MENTOR_SEED },
-  on(loadMentorData, (_, { stats, pendingRequests, activeMentees, earnings, myMentees }) => ({
+  mentorInitialState,
+  on(loadMentorData, (_, { stats, pendingRequests, activeMentees, earnings, myMentees, acceptingNewMentees, payoutAccount, notificationSettings }) => ({
     ...mentorInitialState,
     stats,
     pendingRequests,
     activeMentees,
     earnings,
     myMentees,
-    payoutAccount: defaultPayoutAccount,
-    acceptingNewMentees: true,
-    notificationSettings: defaultNotificationSettings,
+    payoutAccount: payoutAccount ?? defaultPayoutAccount,
+    acceptingNewMentees: acceptingNewMentees ?? true,
+    notificationSettings: notificationSettings
+      ? defaultNotificationSettings.map((d) => ({ ...d, ...(notificationSettings.find((s) => s.id === d.id) ?? {}) }))
+      : defaultNotificationSettings,
   })),
   on(resetMentor, () => mentorInitialState),
   on(declineMentorshipRequest, (state, { requestId: id }) => ({
@@ -49,6 +51,7 @@ export const mentorReducer = createReducer<MentorState>(
     };
   }),
   on(setMentorPendingRequests, (state, { requests }) => ({ ...state, pendingRequests: requests })),
+  on(setMentorMentees, (state, { myMentees }) => ({ ...state, myMentees })),
   on(removeMenteeFromList, (state, { menteeId }) => ({
     ...state,
     myMentees: state.myMentees.filter((m) => m.id !== menteeId),

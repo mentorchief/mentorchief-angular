@@ -4,11 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { Store } from '@ngrx/store';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, take } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { selectActiveMentorsList, selectPastMentorsWithReviews } from '../store/dashboard.selectors';
 import { submitMentorReview } from '../store/dashboard.actions';
+import { selectAuthUser } from '../../auth/store/auth.selectors';
 import { ToastService } from '../../../shared/services/toast.service';
+import { AuthApiService } from '../../../core/services/auth-api.service';
 import type { PastMentorSummary, ActiveMentorSummary, MentorReview, MenteeReport } from '../../../core/models/dashboard.model';
 import { RATING_SCALE_MAX } from '../../../core/constants';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
@@ -291,6 +293,7 @@ const PAST_PAGE_SIZE = 5;
 export class MyMentorsPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store<AppState>);
   private readonly toast = inject(ToastService);
+  private readonly authApi = inject(AuthApiService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
 
@@ -405,8 +408,23 @@ export class MyMentorsPageComponent implements OnInit, OnDestroy {
     const mentor = this.reviewModalMentor;
     const rating = this.reviewRating;
     if (!mentor || rating < 1) return;
-    this.store.dispatch(submitMentorReview({ mentorId: String(mentor.id), rating, comment: this.reviewComment.trim() }));
-    this.toast.success(`Thanks! Your review for ${mentor.name} has been submitted.`);
-    this.closeReviewModal();
+    const mentorUuid = mentor.mentorUuid;
+    if (!mentorUuid) {
+      this.toast.error('Cannot submit review: mentor ID is unavailable.');
+      return;
+    }
+    this.store.select(selectAuthUser).pipe(take(1)).subscribe((user) => {
+      if (!user) return;
+      this.authApi.submitMentorReview(mentorUuid, user.id, rating, this.reviewComment.trim()).subscribe({
+        next: () => {
+          this.store.dispatch(submitMentorReview({ mentorId: mentorUuid, rating, comment: this.reviewComment.trim() }));
+          this.toast.success(`Thanks! Your review for ${mentor.name} has been submitted.`);
+          this.closeReviewModal();
+        },
+        error: () => {
+          this.toast.error('Failed to submit review. Please try again.');
+        },
+      });
+    });
   }
 }

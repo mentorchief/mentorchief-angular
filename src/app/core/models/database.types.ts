@@ -33,6 +33,9 @@ export interface Database {
           mentee_capacity: string | null;
           mentor_approval_status: 'pending' | 'approved' | 'rejected' | null;
           status: 'active' | 'suspended' | 'pending';
+          accepting_mentees: boolean | null;
+          payout_account: Json | null;
+          notification_settings: Json | null;
           join_date: string | null;
           experiences: Json | null;
           created_at: string;
@@ -148,6 +151,35 @@ export interface Database {
         };
         Insert: Omit<Database['public']['Tables']['subscriptions']['Row'], 'created_at' | 'updated_at'>;
         Update: Partial<Database['public']['Tables']['subscriptions']['Insert']>;
+      };
+
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          type: 'report_required' | 'report_submitted' | 'payment_released' | 'new_message' | 'mentorship_request' | 'payment_updated' | 'account_updated';
+          title: string;
+          body: string;
+          read: boolean;
+          metadata: Record<string, unknown>;
+          created_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['notifications']['Row'], 'id' | 'created_at' | 'read'> & { read?: boolean };
+        Update: Partial<Database['public']['Tables']['notifications']['Insert']>;
+      };
+
+      platform_config: {
+        Row: {
+          id: number;
+          platform_fee_percent: number | null;
+          escrow_days: number | null;
+          min_subscription_price: number | null;
+          max_subscription_price: number | null;
+          maintenance_mode: boolean | null;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['platform_config']['Row'], 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['platform_config']['Insert']>;
       };
 
       mentorships: {

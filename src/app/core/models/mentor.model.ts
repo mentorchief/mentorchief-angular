@@ -1,3 +1,5 @@
+import type { MentorPlan } from './user.model';
+
 export interface Mentor {
   id: string;
   name: string;
@@ -13,5 +15,6 @@ export interface Mentor {
   sessions: number;
   responseTime: string;
   yearsOfExperience: number;
+  mentorPlans: MentorPlan[];
 }
 

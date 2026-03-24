@@ -1,8 +1,10 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { Store } from '@ngrx/store';
+import { Subject, take } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import type { AppState } from '../../store/app.state';
 import { selectAuthUser } from '../auth/store/auth.selectors';
 import {
@@ -14,6 +16,7 @@ import {
 import { cancelMenteeSubscription } from './store/dashboard.actions';
 import { ConfirmDialogService } from '../../shared/services/confirm-dialog.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { AuthApiService } from '../../core/services/auth-api.service';
 
 @Component({
   selector: 'mc-mentee-dashboard',
@@ -113,7 +116,7 @@ import { ToastService } from '../../shared/services/toast.service';
                       (click)="onCancelSubscription()"
                       class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm hover:bg-red-100 transition-colors"
                     >
-                      <fa-icon [icon]="['fas', 'xmark-circle']" class="w-4 h-4" />
+                      <fa-icon [icon]="['fas', 'circle-xmark']" class="w-4 h-4" />
                       Cancel subscription (full refund)
                     </button>
                   </div>
@@ -217,10 +220,17 @@ import { ToastService } from '../../shared/services/toast.service';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MenteeDashboardComponent {
+export class MenteeDashboardComponent implements OnDestroy {
   private readonly store = inject(Store<AppState>);
   private readonly confirm = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly authApi = inject(AuthApiService);
+  private readonly destroy$ = new Subject<void>();
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
 
   readonly user$ = this.store.select(selectAuthUser);
   readonly activeMentorship$ = this.store.select(selectActiveMentorship);
@@ -238,9 +248,22 @@ export class MenteeDashboardComponent {
       variant: 'danger',
     });
     if (!confirmed) return;
-    this.store.dispatch(cancelMenteeSubscription());
-    this.toast.success(
-      'Subscription cancelled. You will receive a full refund. Your mentor has been informed.',
-    );
+    this.store.select(selectActiveMentorship).pipe(take(1)).subscribe((mentorship) => {
+      const mentorshipId = mentorship?.mentorshipId;
+      if (mentorshipId) {
+        this.authApi.cancelMentorship(mentorshipId).pipe(takeUntil(this.destroy$)).subscribe({
+          next: () => {
+            this.store.dispatch(cancelMenteeSubscription());
+            this.toast.success('Subscription cancelled. You will receive a full refund. Your mentor has been informed.');
+          },
+          error: () => {
+            this.toast.error('Failed to cancel subscription. Please try again.');
+          },
+        });
+      } else {
+        this.store.dispatch(cancelMenteeSubscription());
+        this.toast.success('Subscription cancelled. You will receive a full refund. Your mentor has been informed.');
+      }
+    });
   }
 }

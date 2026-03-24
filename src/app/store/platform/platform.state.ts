@@ -4,6 +4,11 @@ export interface PlatformConfig {
   countries: number;
   defaultCardExpiry?: string;
   avgSessionRating?: string;
+  platformFeePercent?: number;
+  escrowDays?: number;
+  minSubscriptionPrice?: number;
+  maxSubscriptionPrice?: number;
+  maintenanceMode?: boolean;
 }
 
 export interface PlatformState {
@@ -17,5 +22,9 @@ export const platformInitialState: PlatformState = {
     countries: 50,
     defaultCardExpiry: '12/27',
     avgSessionRating: '4.8',
+    platformFeePercent: 10,
+    escrowDays: 30,
+    minSubscriptionPrice: 50,
+    maxSubscriptionPrice: 1000,
   },
 };

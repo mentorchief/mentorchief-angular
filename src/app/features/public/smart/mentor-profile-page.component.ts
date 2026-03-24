@@ -1,10 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
-import { combineLatest, map } from 'rxjs';
-import { MENTORS } from '../../../core/data/mentors.data';
+import { combineLatest, map, take } from 'rxjs';
 import type { Mentor } from '../../../core/models/mentor.model';
 import type { AppState } from '../../../store/app.state';
 import { selectAuthUser } from '../../auth/store/auth.selectors';
@@ -13,13 +12,15 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { UserRole } from '../../../core/models/user.model';
 import { ToastService } from '../../../shared/services/toast.service';
 import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.service';
+import { selectActiveMentorsAsMentor } from '../../../store/users/users.selectors';
+import { AuthApiService } from '../../../core/services/auth-api.service';
 
 @Component({
   selector: 'mc-mentor-profile-page',
   standalone: true,
   imports: [CommonModule, RouterLink, FormsModule, FontAwesomeModule],
   template: `
-    @if (mentor) {
+    @if (mentor$ | async; as mentor) {
       <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <!-- Back Link -->
         <a routerLink="/browse" class="inline-flex items-center gap-2 text-gray-500 hover:text-gray-900 mb-6 no-underline">
@@ -52,9 +53,13 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                   </div>
                   <div class="flex items-center gap-4 mt-4">
                     <div class="flex items-center gap-1.5">
-                      <fa-icon [icon]="['fas', 'star']" class="text-amber-400 w-4 h-4" />
-                      <span class="text-gray-900 font-medium">{{ mentor.rating }}</span>
-                      <span class="text-gray-500 text-sm">({{ (reviewCount$ | async) ?? 0 }} reviews)</span>
+                      @if ((reviewCount$ | async)! > 0) {
+                        <fa-icon [icon]="['fas', 'star']" class="text-amber-400 w-4 h-4" />
+                        <span class="text-gray-900 font-medium">{{ mentor.rating }}</span>
+                        <span class="text-gray-500 text-sm">({{ (reviewCount$ | async) ?? 0 }} reviews)</span>
+                      } @else {
+                        <span class="text-gray-500 text-sm">No reviews yet</span>
+                      }
                     </div>
                     <div class="text-gray-500 text-sm">{{ mentor.sessions }} subscriptions</div>
                     <div class="text-gray-500 text-sm">{{ mentor.yearsOfExperience }} years exp</div>
@@ -122,10 +127,24 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
           <div class="space-y-6">
             <!-- Pricing Card -->
             <div class="bg-white rounded-lg border border-gray-200 p-6 sticky top-24">
-              <div class="text-center mb-6">
-                <div class="text-3xl text-indigo-600 font-bold">\${{ mentor.price }}</div>
-                <div class="text-gray-500 text-sm">per month</div>
-              </div>
+              @if (mentor.mentorPlans.length) {
+                <div class="text-center mb-6">
+                  <div class="text-lg text-gray-900 font-semibold mb-3">Plans</div>
+                  <div class="space-y-2">
+                    @for (plan of mentor.mentorPlans; track plan.id) {
+                      <div class="flex items-center justify-between px-3 py-2 rounded-md border border-gray-200">
+                        <span class="text-sm text-gray-700">{{ formatPlanDuration(plan.duration) }}</span>
+                        <span class="text-indigo-600 font-bold">\${{ plan.price }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+              } @else {
+                <div class="text-center mb-6">
+                  <div class="text-3xl text-indigo-600 font-bold">\${{ mentor.price }}</div>
+                  <div class="text-gray-500 text-sm">per month</div>
+                </div>
+              }
 
               <div class="space-y-3 mb-6">
                 <div class="flex items-center gap-3 text-sm text-gray-600">
@@ -197,7 +216,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
       </div>
 
       <!-- Request Mentorship Modal -->
-      @if (showRequestModal && mentor) {
+      @if (showRequestModal) {
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div class="absolute inset-0 bg-foreground/50 backdrop-blur-sm" (click)="showRequestModal = false"></div>
           <div class="relative bg-card rounded-lg shadow-xl border border-border max-w-md w-full p-6" (click)="$event.stopPropagation()">
@@ -210,7 +229,12 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
             <div class="mt-4 space-y-3">
               <label class="block text-sm font-medium text-foreground">Plan</label>
               <select [(ngModel)]="selectedPlan" class="w-full px-4 py-2.5 bg-input-background border border-border rounded-md">
-                <option value="monthly">Monthly - \${{ mentor.price }}/month</option>
+                @for (plan of mentor.mentorPlans; track plan.id) {
+                  <option [value]="plan.id">{{ formatPlanDuration(plan.duration) }} - \${{ plan.price }}/{{ plan.duration === 'monthly' ? 'month' : plan.duration === 'quarterly' ? 'quarter' : '6 months' }}</option>
+                }
+                @if (!mentor.mentorPlans.length) {
+                  <option value="monthly">Monthly - \${{ mentor.price }}/month</option>
+                }
               </select>
               <label class="block text-sm font-medium text-foreground mt-3">Message (optional)</label>
               <textarea
@@ -248,22 +272,34 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MentorProfilePageComponent {
+export class MentorProfilePageComponent implements OnInit {
   readonly UserRole = UserRole;
   private readonly route = inject(ActivatedRoute);
   private readonly store = inject(Store<AppState>);
   private readonly toast = inject(ToastService);
   private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly authApi = inject(AuthApiService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
-  mentor: Mentor | undefined;
   showRequestModal = false;
   selectedPlan = 'monthly';
   requestMessage = '';
   hasPendingRequest = false;
-
-  private static readonly PENDING_STORAGE_KEY = 'mentorchief_pending_mentorship_requests';
+  submittingRequest = false;
+  private currentMentor: Mentor | null = null;
+  private currentMentorshipId: string | null = null;
 
   readonly sampleReviewsCount = 3;
+
+  readonly mentor$ = combineLatest([
+    this.store.select(selectActiveMentorsAsMentor),
+    this.route.paramMap,
+  ]).pipe(
+    map(([mentors, params]) => {
+      const id = params.get('id');
+      return id ? (mentors.find((m) => m.id === id) ?? null) : null;
+    }),
+  );
 
   readonly user$ = this.store.select(selectAuthUser);
   readonly profileReviews$ = combineLatest([
@@ -277,11 +313,38 @@ export class MentorProfilePageComponent {
   );
   readonly reviewCount$ = this.profileReviews$.pipe(map((reviews) => reviews.length));
 
+  private static readonly PLAN_DURATION_LABELS: Record<string, string> = {
+    monthly: 'Monthly',
+    quarterly: 'Quarterly',
+    '6months': '6 Months',
+  };
+
   constructor() {
-    const id = this.route.snapshot.paramMap.get('id');
-    this.mentor = MENTORS.find((m) => m.id === id);
-    this.hasPendingRequest = this.getPendingRequestIds().includes(id ?? '');
     this.showRequestModal = this.route.snapshot.routeConfig?.path === 'mentor/:id/request';
+    this.mentor$.subscribe((m) => {
+      this.currentMentor = m;
+      if (m?.mentorPlans?.length) {
+        this.selectedPlan = m.mentorPlans[0].id;
+      }
+    });
+  }
+
+  ngOnInit(): void {
+    const mentorId = this.route.snapshot.paramMap.get('id');
+    if (!mentorId) return;
+    this.store.select(selectAuthUser).pipe(take(1)).subscribe((user) => {
+      if (!user || user.role !== UserRole.Mentee) return;
+      this.authApi.getMentorshipForMenteeAndMentor(user.id, mentorId).subscribe({
+        next: (mentorship) => {
+          if (mentorship) {
+            this.hasPendingRequest = true;
+            this.currentMentorshipId = mentorship.id;
+          }
+          this.cdr.markForCheck();
+        },
+        error: () => { /* no active mentorship */ },
+      });
+    });
   }
 
   getInitials(name: string): string {
@@ -292,47 +355,68 @@ export class MentorProfilePageComponent {
     return Array.from({ length: rating });
   }
 
-  private getPendingRequestIds(): string[] {
-    try {
-      const raw = sessionStorage.getItem(MentorProfilePageComponent.PENDING_STORAGE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as string[];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  private setPendingRequestIds(ids: string[]): void {
-    sessionStorage.setItem(MentorProfilePageComponent.PENDING_STORAGE_KEY, JSON.stringify(ids));
+  formatPlanDuration(duration: string): string {
+    return MentorProfilePageComponent.PLAN_DURATION_LABELS[duration] ?? duration;
   }
 
   onSubmitRequest(): void {
     this.showRequestModal = false;
-    if (this.mentor?.id) {
-      const ids = this.getPendingRequestIds();
-      if (!ids.includes(this.mentor.id)) {
-        this.setPendingRequestIds([...ids, this.mentor.id]);
+    const mentor = this.currentMentor;
+    if (!mentor?.id || this.submittingRequest) return;
+    this.submittingRequest = true;
+
+    this.store.select(selectAuthUser).pipe(take(1)).subscribe((user) => {
+      if (!user) {
+        this.submittingRequest = false;
+        this.toast.error('You must be logged in to request mentorship.');
+        return;
       }
-      this.hasPendingRequest = true;
-    }
-    this.toast.success(`Mentorship request sent to ${this.mentor?.name}! You'll be notified once they respond.`);
-    this.requestMessage = '';
+      const selectedPlanObj = mentor.mentorPlans?.find((p) => p.id === this.selectedPlan);
+      const planName = selectedPlanObj ? this.formatPlanDuration(selectedPlanObj.duration) : 'Monthly';
+      const amount = selectedPlanObj ? parseFloat(String(selectedPlanObj.price)) || 0 : (mentor.price ?? 0);
+
+      this.authApi.requestMentorship(mentor.id, user.id, '', this.requestMessage, planName, amount).subscribe({
+        next: (mentorship) => {
+          this.hasPendingRequest = true;
+          this.currentMentorshipId = mentorship.id;
+          this.submittingRequest = false;
+          this.requestMessage = '';
+          this.toast.success(`Mentorship request sent to ${mentor.name}! You'll be notified once they respond.`);
+          this.cdr.markForCheck();
+        },
+        error: (err: Error) => {
+          this.submittingRequest = false;
+          this.toast.error(err.message ?? 'Failed to send mentorship request. Please try again.');
+          this.cdr.markForCheck();
+        },
+      });
+    });
   }
 
   async onCancelRequest(): Promise<void> {
-    if (!this.mentor?.id) return;
+    if (!this.currentMentor?.id) return;
     const confirmed = await this.confirmDialog.confirm({
       title: 'Cancel mentorship request',
-      message: `Are you sure you want to cancel your request to ${this.mentor.name}? You can send a new request later if you change your mind.`,
+      message: `Are you sure you want to cancel your request to ${this.currentMentor.name}? You can send a new request later if you change your mind.`,
       confirmLabel: 'Yes, cancel request',
       cancelLabel: 'Keep request',
       variant: 'danger',
     });
     if (!confirmed) return;
-    const ids = this.getPendingRequestIds().filter((id) => id !== this.mentor!.id);
-    this.setPendingRequestIds(ids);
-    this.hasPendingRequest = false;
-    this.toast.success(`Mentorship request to ${this.mentor.name} has been cancelled.`);
+    if (this.currentMentorshipId) {
+      this.authApi.cancelMentorship(this.currentMentorshipId).subscribe({
+        next: () => {
+          this.hasPendingRequest = false;
+          this.currentMentorshipId = null;
+          this.toast.success(`Mentorship request to ${this.currentMentor!.name} has been cancelled.`);
+          this.cdr.markForCheck();
+        },
+        error: () => { this.toast.error('Failed to cancel the request. Please try again.'); },
+      });
+    } else {
+      this.hasPendingRequest = false;
+      this.toast.success(`Mentorship request to ${this.currentMentor.name} has been cancelled.`);
+      this.cdr.markForCheck();
+    }
   }
 }

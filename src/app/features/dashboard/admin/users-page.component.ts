@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { Store } from '@ngrx/store';
 import { Subject, takeUntil } from 'rxjs';
 import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.service';
@@ -8,8 +9,9 @@ import { ToastService } from '../../../shared/services/toast.service';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 import type { AppState } from '../../../store/app.state';
 import { selectPlatformUsers } from '../store/dashboard.selectors';
-import { addUser, updateUserStatus } from '../store/dashboard.actions';
+import { updateUserStatus } from '../store/dashboard.actions';
 import { UserRole, MentorApprovalStatus, type User } from '../../../core/models/user.model';
+import { AuthApiService } from '../../../core/services/auth-api.service';
 
 const PAGE_SIZE = 10;
 
@@ -24,82 +26,8 @@ const PAGE_SIZE = 10;
           <h1 class="text-2xl lg:text-3xl text-foreground">Users</h1>
           <p class="text-muted-foreground mt-1">Manage platform users</p>
         </div>
-        <button
-          type="button"
-          (click)="onOpenAddUser()"
-          class="px-4 py-2.5 bg-primary text-primary-foreground rounded-md hover:opacity-90"
-        >
-          + Add User
-        </button>
       </div>
 
-      @if (showAddUserForm) {
-        <div class="bg-card rounded-lg border border-border p-6 mb-6">
-          <h2 class="text-lg font-medium text-foreground mb-4">Add new user</h2>
-          <form (ngSubmit)="onSubmitAddUser()" class="grid sm:grid-cols-2 gap-4 max-w-2xl">
-            <div>
-              <label for="add-name" class="block text-sm font-medium text-foreground mb-1">Name</label>
-              <input
-                id="add-name"
-                type="text"
-                [(ngModel)]="addUserForm.name"
-                name="name"
-                required
-                class="w-full px-4 py-2 bg-input-background border border-border rounded-md"
-                placeholder="Full name"
-              />
-            </div>
-            <div>
-              <label for="add-email" class="block text-sm font-medium text-foreground mb-1">Email</label>
-              <input
-                id="add-email"
-                type="email"
-                [(ngModel)]="addUserForm.email"
-                name="email"
-                required
-                class="w-full px-4 py-2 bg-input-background border border-border rounded-md"
-                placeholder="email@example.com"
-              />
-            </div>
-            <div>
-              <label for="add-role" class="block text-sm font-medium text-foreground mb-1">Role</label>
-              <select
-                id="add-role"
-                [(ngModel)]="addUserForm.role"
-                name="role"
-                required
-                class="w-full px-4 py-2 bg-input-background border border-border rounded-md"
-              >
-                <option value="mentee">Mentee</option>
-                <option value="mentor">Mentor</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div class="sm:col-span-2">
-              <label for="add-phone" class="block text-sm font-medium text-foreground mb-1">Phone (optional)</label>
-              <input
-                id="add-phone"
-                type="tel"
-                [(ngModel)]="addUserForm.phone"
-                name="phone"
-                class="w-full px-4 py-2 bg-input-background border border-border rounded-md"
-                placeholder="e.g. 15551234567"
-              />
-            </div>
-            @if (addUserError) {
-              <p class="sm:col-span-2 text-sm text-destructive">{{ addUserError }}</p>
-            }
-            <div class="sm:col-span-2 flex gap-2">
-              <button type="submit" class="px-4 py-2.5 bg-primary text-primary-foreground rounded-md hover:opacity-90">
-                Add user
-              </button>
-              <button type="button" (click)="onCancelAddUser()" class="px-4 py-2.5 border border-border text-foreground rounded-md hover:bg-muted">
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      }
 
       <!-- Filters -->
       <div class="bg-card rounded-lg border border-border p-4 mb-6">
@@ -129,7 +57,9 @@ const PAGE_SIZE = 10;
             <option value="">All Status</option>
             <option value="active">Active</option>
             <option value="suspended">Suspended</option>
-            <option value="pending">Pending</option>
+            <option value="not_registered">Not registered</option>
+            <option value="pending_approval">Pending approval</option>
+            <option value="rejected">Rejected</option>
           </select>
         </div>
       </div>
@@ -167,9 +97,19 @@ const PAGE_SIZE = 10;
                     </span>
                   </td>
                   <td class="px-5 py-4">
-                    <span [class]="getStatusClass(user.status ?? 'active')" class="px-2.5 py-1 rounded-md text-xs capitalize">
-                      {{ user.status ?? 'active' }}
-                    </span>
+                    <div class="flex flex-wrap gap-1">
+                      @if (user.status === 'suspended') {
+                        <span class="px-2 py-0.5 rounded-md text-xs bg-destructive/10 text-destructive">Suspended</span>
+                      } @else if (!user.registered) {
+                        <span class="px-2 py-0.5 rounded-md text-xs bg-amber-100 text-amber-700">Not registered</span>
+                      } @else if (user.role === 'mentor' && user.mentorApprovalStatus === 'pending') {
+                        <span class="px-2 py-0.5 rounded-md text-xs bg-amber-100 text-amber-700">Pending approval</span>
+                      } @else if (user.role === 'mentor' && user.mentorApprovalStatus === 'rejected') {
+                        <span class="px-2 py-0.5 rounded-md text-xs bg-destructive/10 text-destructive">Rejected</span>
+                      } @else {
+                        <span class="px-2 py-0.5 rounded-md text-xs bg-green-100 text-green-700">Active</span>
+                      }
+                    </div>
                   </td>
                   <td class="px-5 py-4 text-sm text-muted-foreground">{{ user.joinDate ?? '—' }}</td>
                   <td class="px-5 py-4">
@@ -222,7 +162,9 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store<AppState>);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly authApi = inject(AuthApiService);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly route = inject(ActivatedRoute);
   private readonly destroy$ = new Subject<void>();
 
   /** Data from store (single platform user list). Component holds only filter/pagination UI state. */
@@ -233,16 +175,12 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
   filterRole = '';
   filterStatus = '';
 
-  showAddUserForm = false;
-  addUserError = '';
-  addUserForm = {
-    name: '',
-    email: '',
-    role: UserRole.Mentee,
-    phone: '',
-  };
 
   ngOnInit(): void {
+    const searchParam = this.route.snapshot.queryParamMap.get('search');
+    if (searchParam) {
+      this.searchQuery = searchParam;
+    }
     this.store
       .select(selectPlatformUsers)
       .pipe(takeUntil(this.destroy$))
@@ -264,7 +202,12 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
     return this.usersList.filter((u) => {
       const matchSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
       const matchRole = !role || u.role === role;
-      const matchStatus = !status || u.status === status;
+      let matchStatus = true;
+      if (status === 'suspended') matchStatus = u.status === 'suspended';
+      else if (status === 'not_registered') matchStatus = u.status !== 'suspended' && !u.registered;
+      else if (status === 'pending_approval') matchStatus = u.status !== 'suspended' && u.registered === true && u.role === UserRole.Mentor && u.mentorApprovalStatus === MentorApprovalStatus.Pending;
+      else if (status === 'rejected') matchStatus = u.status !== 'suspended' && u.registered === true && u.role === UserRole.Mentor && u.mentorApprovalStatus === MentorApprovalStatus.Rejected;
+      else if (status === 'active') matchStatus = u.status !== 'suspended' && u.registered === true && (u.role !== UserRole.Mentor || u.mentorApprovalStatus === MentorApprovalStatus.Approved);
       return matchSearch && matchRole && matchStatus;
     });
   }
@@ -325,52 +268,6 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  onOpenAddUser(): void {
-    this.showAddUserForm = true;
-    this.addUserError = '';
-    this.addUserForm = { name: '', email: '', role: UserRole.Mentee, phone: '' };
-    this.cdr.markForCheck();
-  }
-
-  onCancelAddUser(): void {
-    this.showAddUserForm = false;
-    this.addUserError = '';
-    this.cdr.markForCheck();
-  }
-
-  onSubmitAddUser(): void {
-    this.addUserError = '';
-    const { name, email, role, phone } = this.addUserForm;
-    const nameTrim = name?.trim() ?? '';
-    const emailTrim = email?.trim() ?? '';
-    if (!nameTrim || !emailTrim) {
-      this.addUserError = 'Name and email are required.';
-      this.cdr.markForCheck();
-      return;
-    }
-    const existing = this.usersList.some((u) => u.email.toLowerCase() === emailTrim.toLowerCase());
-    if (existing) {
-      this.addUserError = 'A user with this email already exists.';
-      this.cdr.markForCheck();
-      return;
-    }
-    const newUser: User = {
-      id: `u${Date.now()}`,
-      name: nameTrim,
-      email: emailTrim,
-      role,
-      avatar: '',
-      status: 'active',
-      joinDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      ...(phone?.trim() ? { phone: phone.trim() } : {}),
-      ...(role === UserRole.Mentor ? { mentorApprovalStatus: MentorApprovalStatus.Approved } : {}),
-    };
-    this.store.dispatch(addUser({ user: newUser }));
-    this.showAddUserForm = false;
-    this.addUserForm = { name: '', email: '', role: UserRole.Mentee, phone: '' };
-    this.toast.success(`${nameTrim} has been added.`);
-    this.cdr.markForCheck();
-  }
 
   async onToggleSuspend(user: User): Promise<void> {
     const isSuspending = user.status !== 'suspended';
@@ -383,12 +280,17 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
       cancelLabel: 'Cancel',
       variant: isSuspending ? 'danger' : 'primary',
     });
-    if (confirmed) {
-      this.store.dispatch(updateUserStatus({
-        userId: user.id,
-        status: isSuspending ? 'suspended' : 'active',
-      }));
-      this.toast.success(isSuspending ? `${user.name} has been suspended.` : `${user.name} has been activated.`);
-    }
+    if (!confirmed) return;
+    const newStatus = isSuspending ? 'suspended' as const : 'active' as const;
+    this.authApi.updateUserStatus(user.id, newStatus).subscribe({
+      next: () => {
+        this.store.dispatch(updateUserStatus({ userId: user.id, status: newStatus }));
+        this.toast.success(isSuspending ? `${user.name} has been suspended.` : `${user.name} has been activated.`);
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.toast.error(`Failed to ${isSuspending ? 'suspend' : 'activate'} ${user.name}. Please try again.`);
+      },
+    });
   }
 }

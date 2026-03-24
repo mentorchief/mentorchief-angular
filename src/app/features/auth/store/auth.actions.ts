@@ -1,6 +1,7 @@
 import { createAction, props } from '@ngrx/store';
 import type { LoginPayload, SignupPayload } from '../../../core/models/auth.model';
 import type { User } from '../../../core/models/user.model';
+import { UserRole } from '../../../core/models/user.model';
 
 export const login = createAction(
   '[Auth] Login',
@@ -44,10 +45,20 @@ export const markRegistered = createAction(
   props<{ updates?: Partial<User> }>(),
 );
 
+export const markRegisteredSuccess = createAction(
+  '[Auth] Mark Registered Success',
+  props<{ role: UserRole }>(),
+);
+
 export const updateProfile = createAction(
   '[Auth] Update Profile',
   props<{ updates: Partial<User> }>(),
 );
 
 export const logout = createAction('[Auth] Logout');
+
+export const switchActiveRole = createAction(
+  '[Auth] Switch Active Role',
+  props<{ role: UserRole }>(),
+);
 

@@ -8,6 +8,7 @@ import { SignupPageComponent } from './features/auth/smart/signup-page.component
 import { ForgotPasswordPageComponent } from './features/auth/smart/forgot-password-page.component';
 import { ResetPasswordPageComponent } from './features/auth/smart/reset-password-page.component';
 import { VerifyEmailPageComponent } from './features/auth/smart/verify-email-page.component';
+import { SuspendedPageComponent } from './features/auth/smart/suspended-page.component';
 import { RoleInfoPageComponent } from './features/registration/smart/role-info-page.component';
 import { PersonalInfoPageComponent } from './features/registration/smart/personal-info-page.component';
 import { CareerInfoPageComponent } from './features/registration/smart/career-info-page.component';
@@ -20,8 +21,8 @@ import { AdminDashboardComponent } from './features/dashboard/admin-dashboard.co
 import { BrowseMentorsPageComponent } from './features/public/smart/browse-mentors-page.component';
 import { MentorProfilePageComponent } from './features/public/smart/mentor-profile-page.component';
 import { MentorReviewsPageComponent } from './features/public/smart/mentor-reviews-page.component';
-import { authGuard, registrationGuard, roleGuard, mentorApprovalGuard, guestGuard } from './core/guards/auth.guard';
-import { UserRole } from './core/models/user.model';
+import { authGuard, registrationGuard, roleGuard, mentorApprovalGuard, guestGuard, mentorStatusRootGuard, menteeReportsGuard } from './core/guards/auth.guard';
+import { MentorApprovalStatus, UserRole } from './core/models/user.model';
 
 // Mentee dashboard pages
 import { MyMentorsPageComponent } from './features/dashboard/mentee/my-mentors-page.component';
@@ -37,9 +38,14 @@ import { MentorReportViewPageComponent } from './features/dashboard/mentor/repor
 import { MentorMessagesPageComponent } from './features/dashboard/mentor/messages-page.component';
 import { MentorEarningsPageComponent } from './features/dashboard/mentor/earnings-page.component';
 import { MentorReportsPageComponent } from './features/dashboard/mentor/reports-page.component';
+import { MenteeReportsPageComponent as MentorMenteeReportsPageComponent } from './features/dashboard/mentor/mentee-reports-page.component';
 import { MentorSettingsPageComponent } from './features/dashboard/mentor/settings-page.component';
+import { MentorMyReviewsPageComponent } from './features/dashboard/mentor/my-reviews-page.component';
 import { MentorApplicationPendingComponent } from './features/dashboard/mentor/mentor-application-pending.component';
 import { MentorApplicationRejectedComponent } from './features/dashboard/mentor/mentor-application-rejected.component';
+
+// Shared dashboard pages
+import { NotificationsPageComponent } from './features/dashboard/shared/notifications-page.component';
 
 // Admin dashboard pages
 import { AdminUsersPageComponent } from './features/dashboard/admin/users-page.component';
@@ -68,6 +74,7 @@ export const routes: Routes = [
       { path: 'forgot-password', component: ForgotPasswordPageComponent },
       { path: 'reset-password', component: ResetPasswordPageComponent },
       { path: 'verify-email', component: VerifyEmailPageComponent },
+      { path: 'suspended', component: SuspendedPageComponent },
       { path: 'browse', component: BrowseMentorsPageComponent },
       {
         path: 'mentor/:id/request',
@@ -109,23 +116,28 @@ export const routes: Routes = [
       { path: 'payments', component: MenteePaymentsPageComponent },
       { path: 'reports', component: MenteeReportsPageComponent },
       { path: 'settings', component: MenteeSettingsPageComponent },
+      { path: 'notifications', component: NotificationsPageComponent },
     ],
   },
   {
     path: 'dashboard/mentor',
     component: DashboardLayoutComponent,
-    canActivate: [authGuard, roleGuard([UserRole.Mentor]), mentorApprovalGuard],
+    canActivate: [authGuard, roleGuard([UserRole.Mentor])],
     children: [
-      { path: 'pending', component: MentorApplicationPendingComponent },
-      { path: 'rejected', component: MentorApplicationRejectedComponent },
-      { path: '', pathMatch: 'full', component: MentorDashboardComponent },
-      { path: 'my-mentees', component: MyMenteesPageComponent },
-      { path: 'report/:menteeId', component: MentorReportFormPageComponent },
-      { path: 'report-view/:reportId', component: MentorReportViewPageComponent },
-      { path: 'messages', component: MentorMessagesPageComponent },
-      { path: 'earnings', component: MentorEarningsPageComponent },
-      { path: 'reports', component: MentorReportsPageComponent },
-      { path: 'settings', component: MentorSettingsPageComponent },
+      { path: '', pathMatch: 'full', canActivate: [mentorStatusRootGuard], component: MentorApplicationPendingComponent },
+      { path: 'pending', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Pending, MentorApprovalStatus.Rejected])], component: MentorApplicationPendingComponent },
+      { path: 'rejected', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Pending, MentorApprovalStatus.Rejected])], component: MentorApplicationRejectedComponent },
+      { path: 'home', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: MentorDashboardComponent },
+      { path: 'my-mentees', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: MyMenteesPageComponent },
+      { path: 'report/:menteeId', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: MentorReportFormPageComponent },
+      { path: 'report-view/:reportId', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: MentorReportViewPageComponent },
+      { path: 'messages', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: MentorMessagesPageComponent },
+      { path: 'earnings', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: MentorEarningsPageComponent },
+      { path: 'reports', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: MentorReportsPageComponent },
+      { path: 'mentee-reports/:menteeUuid', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved]), menteeReportsGuard], component: MentorMenteeReportsPageComponent },
+      { path: 'reviews', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: MentorMyReviewsPageComponent },
+      { path: 'settings', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: MentorSettingsPageComponent },
+      { path: 'notifications', canActivate: [mentorApprovalGuard([MentorApprovalStatus.Approved])], component: NotificationsPageComponent },
     ],
   },
   {
@@ -141,6 +153,7 @@ export const routes: Routes = [
       { path: 'reports', component: AdminReportsPageComponent },
       { path: 'mentorship-reports', component: AdminMentorshipReportsPageComponent },
       { path: 'settings', component: AdminSettingsPageComponent },
+      { path: 'notifications', component: NotificationsPageComponent },
     ],
   },
   { path: '**', redirectTo: '', pathMatch: 'full' },

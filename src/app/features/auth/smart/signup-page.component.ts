@@ -96,7 +96,7 @@ export class SignupPageComponent implements OnInit {
     if (user.role === UserRole.Admin) {
       void this.router.navigate([ROUTES.admin.dashboard]);
     } else if (user.role === UserRole.Mentor) {
-      const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
+      const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Pending;
       if (status === MentorApprovalStatus.Pending) void this.router.navigate([ROUTES.mentor.pending]);
       else if (status === MentorApprovalStatus.Rejected) void this.router.navigate([ROUTES.mentor.rejected]);
       else void this.router.navigate([ROUTES.mentor.dashboard]);

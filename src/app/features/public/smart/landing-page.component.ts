@@ -2,14 +2,14 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Store } from '@ngrx/store';
+import { map } from 'rxjs';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { MentorCardComponent } from '../../../shared/components/mentor-card.component';
-import { MENTORS } from '../../../core/data/mentors.data';
 import { TESTIMONIALS } from '../../../core/data/testimonials.data';
-import type { Mentor } from '../../../core/models/mentor.model';
 import type { Testimonial } from '../../../core/models/testimonial.model';
 import type { AppState } from '../../../store/app.state';
 import { selectPlatformMarketingData, selectMentorProfileReviewCountByMentorId } from '../../dashboard/store/dashboard.selectors';
+import { selectActiveMentorsAsMentor } from '../../../store/users/users.selectors';
 import { DEFAULT_SAMPLE_PRICE } from '../../../core/constants';
 
 @Component({
@@ -136,7 +136,7 @@ import { DEFAULT_SAMPLE_PRICE } from '../../../core/constants';
         </div>
 
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          @for (mentor of featuredMentors; track mentor.id) {
+          @for (mentor of (featuredMentors$ | async) ?? []; track mentor.id) {
             <mc-mentor-card
               [mentor]="mentor"
               [reviewCount]="(reviewCountByMentorId$ | async)?.[mentor.id] ?? 0"
@@ -270,7 +270,7 @@ export class LandingPageComponent {
   readonly defaultSamplePrice = DEFAULT_SAMPLE_PRICE;
   readonly platformData$ = this.store.select(selectPlatformMarketingData);
   readonly reviewCountByMentorId$ = this.store.select(selectMentorProfileReviewCountByMentorId);
-  readonly featuredMentors: Mentor[] = MENTORS.slice(0, 3);
+  readonly featuredMentors$ = this.store.select(selectActiveMentorsAsMentor).pipe(map((mentors) => mentors.slice(0, 3)));
   readonly testimonials: Testimonial[] = TESTIMONIALS;
 
   readonly howItWorksSteps = [

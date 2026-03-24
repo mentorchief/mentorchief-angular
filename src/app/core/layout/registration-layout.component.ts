@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
@@ -6,6 +6,7 @@ import { Store } from '@ngrx/store';
 import { Observable, take } from 'rxjs';
 import type { AppState } from '../../store/app.state';
 import { hydrateFromSession } from '../../features/registration/store/registration.actions';
+import { logout } from '../../features/auth/store/auth.actions';
 import {
   selectRegistrationCurrentStep,
   selectRegistrationTotalSteps,
@@ -42,14 +43,42 @@ interface StepInfo {
             </a>
 
             @if (user$ | async; as user) {
-              <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
-                  <span class="text-primary-foreground text-xs font-medium">{{ getInitials(user.name) }}</span>
-                </div>
-                <div class="hidden sm:block">
-                  <p class="text-sm text-foreground leading-tight">{{ user.name }}</p>
-                  <p class="text-xs text-muted-foreground">{{ user.email }}</p>
-                </div>
+              <div class="relative">
+                <button
+                  type="button"
+                  (click)="dropdownOpen = !dropdownOpen; $event.stopPropagation()"
+                  class="flex items-center gap-2.5 px-3 py-1.5 rounded-md hover:bg-muted transition-colors"
+                >
+                  @if (isAvatarUrl(user.avatar)) {
+                    <img [src]="user.avatar" [alt]="user.name" class="w-8 h-8 rounded-md object-cover" />
+                  } @else {
+                    <div class="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
+                      <span class="text-primary-foreground text-xs font-medium">{{ getInitials(user.name) }}</span>
+                    </div>
+                  }
+                  <div class="hidden sm:block text-left">
+                    <p class="text-sm text-foreground leading-tight">{{ user.name }}</p>
+                    <p class="text-xs text-muted-foreground">{{ user.email }}</p>
+                  </div>
+                  <fa-icon [icon]="['fas', 'chevron-down']" class="text-muted-foreground text-xs w-3 h-3 transition-transform" [class.rotate-180]="dropdownOpen" />
+                </button>
+
+                @if (dropdownOpen) {
+                  <div class="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-lg border border-border shadow-lg py-1.5 z-50">
+                    <div class="px-3 py-2 border-b border-border mb-1">
+                      <p class="text-sm text-foreground truncate">{{ user.name }}</p>
+                      <p class="text-xs text-muted-foreground truncate">{{ user.email }}</p>
+                    </div>
+                    <button
+                      type="button"
+                      (click)="onLogout()"
+                      class="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-destructive hover:bg-destructive/5 transition-colors"
+                    >
+                      <fa-icon [icon]="['fas', 'right-from-bracket']" class="w-4 h-4" />
+                      Sign Out
+                    </button>
+                  </div>
+                }
               </div>
             }
           </div>
@@ -85,6 +114,13 @@ export class RegistrationLayoutComponent implements OnInit {
   readonly isAuthenticated$: Observable<boolean> = this.store.select(selectIsAuthenticated);
   readonly user$: Observable<User | null> = this.store.select(selectAuthUser);
 
+  dropdownOpen = false;
+
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    this.dropdownOpen = false;
+  }
+
   private currentStepValue = 1;
   private totalStepsValue = 5;
 
@@ -107,6 +143,14 @@ export class RegistrationLayoutComponent implements OnInit {
   }
 
   readonly ROUTES = ROUTES;
+
+  isAvatarUrl(avatar: string | undefined): boolean {
+    return !!avatar && (avatar.startsWith('http') || avatar.startsWith('/'));
+  }
+
+  onLogout(): void {
+    this.store.dispatch(logout());
+  }
 
   getInitials(name: string): string {
     return name

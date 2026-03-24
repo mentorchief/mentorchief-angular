@@ -11,12 +11,15 @@ import {
   loginSuccess,
   logout,
   markRegistered,
+  markRegisteredSuccess,
   signup,
   signupFailure,
   signupSuccess,
+  switchActiveRole,
   updateProfile,
 } from './auth.actions';
 import { resetSession } from '../../../store/session/session.actions';
+import { initializeForRole } from '../../../store/session/session.actions';
 import { addUser, updateUserProfile } from '../../../store/users/users.actions';
 import { ROUTES } from '../../../core/routes';
 import { AuthApiService } from '../../../core/services/auth-api.service';
@@ -32,6 +35,7 @@ export class AuthEffects {
 
   /** Login: fetch full user from Supabase, hydrate users store, then dispatch loginSuccess */
   readonly login$ = createEffect(() =>
+
     this.actions$.pipe(
       ofType(login),
       switchMap(({ payload }) =>
@@ -97,18 +101,34 @@ export class AuthEffects {
     { dispatch: false },
   );
 
-  /** markRegistered: persist to Supabase then update users store */
-  readonly markRegistered$ = createEffect(
+  /** markRegistered: persist to Supabase, update users store, then dispatch success */
+  readonly markRegistered$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(markRegistered),
+      switchMap(({ updates }) =>
+        this.authApi.markRegistered(updates).pipe(
+          tap((user) => {
+            if (user) this.store.dispatch(updateUserProfile({ userId: user.id, updates: { registered: true, ...updates } }));
+          }),
+          map((user) => markRegisteredSuccess({ role: (updates?.role ?? user?.role) as import('../../../core/models/user.model').UserRole })),
+          catchError(() => of(markRegisteredSuccess({ role: (updates?.role) as import('../../../core/models/user.model').UserRole }))),
+        ),
+      ),
+    ),
+  );
+
+  /** Navigate after registration is confirmed in the store */
+  readonly redirectAfterRegistration$ = createEffect(
     () =>
       this.actions$.pipe(
-        ofType(markRegistered),
-        switchMap(({ updates }) =>
-          this.authApi.markRegistered(updates).pipe(
-            tap((user) => {
-              if (user) this.store.dispatch(updateUserProfile({ userId: user.id, updates: { registered: true, ...updates } }));
-            }),
-          ),
-        ),
+        ofType(markRegisteredSuccess),
+        tap(({ role }) => {
+          if (role === UserRole.Mentor) {
+            void this.router.navigate([ROUTES.mentor.pending]);
+          } else {
+            void this.router.navigate([ROUTES.browse]);
+          }
+        }),
       ),
     { dispatch: false },
   );
@@ -179,10 +199,27 @@ export class AuthEffects {
     { dispatch: false },
   );
 
+  /** Admin role-switch: re-initialize store for the chosen view role and navigate */
+  readonly switchActiveRole$ = createEffect(
+    () =>
+      this.actions$.pipe(
+        ofType(switchActiveRole),
+        tap(({ role }) => {
+          this.store.dispatch(initializeForRole({ role }));
+          if (role === UserRole.Admin) void this.router.navigate([ROUTES.admin.dashboard]);
+          else if (role === UserRole.Mentor) void this.router.navigate([ROUTES.mentor.dashboard]);
+          else void this.router.navigate([ROUTES.mentee.dashboard]);
+        }),
+      ),
+    { dispatch: false },
+  );
+
   private getSafeReturnUrl(): string | null {
     const urlTree = this.router.parseUrl(this.router.url);
     const returnUrl = urlTree.queryParams['returnUrl'];
-    if (typeof returnUrl !== 'string' || !returnUrl.startsWith('/mentor/') || returnUrl.includes('..')) return null;
+    if (typeof returnUrl !== 'string' || returnUrl.includes('..') || !returnUrl.startsWith('/')) return null;
+    const ALLOWED_PREFIXES = ['/dashboard/', '/mentor/', '/browse'];
+    if (!ALLOWED_PREFIXES.some((prefix) => returnUrl.startsWith(prefix))) return null;
     return returnUrl;
   }
 }

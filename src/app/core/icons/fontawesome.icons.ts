@@ -40,6 +40,11 @@ import {
   faGlobe,
   faCircle,
   faChevronRight,
+  faBell,
+  faFilePen,
+  faCircleXmark,
+  faRotateLeft,
+  faBan,
 } from '@fortawesome/free-solid-svg-icons';
 import { faGoogle, faLinkedin } from '@fortawesome/free-brands-svg-icons';
 
@@ -87,4 +92,9 @@ export const appFontAwesomeIcons = [
   faCircle,
   faGoogle,
   faLinkedin,
+  faBell,
+  faFilePen,
+  faCircleXmark,
+  faRotateLeft,
+  faBan,
 ];

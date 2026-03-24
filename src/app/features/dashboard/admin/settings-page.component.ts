@@ -1,12 +1,19 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Store } from '@ngrx/store';
+import { take } from 'rxjs';
+import type { AppState } from '../../../store/app.state';
 import { ToastService } from '../../../shared/services/toast.service';
 import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.service';
+import { AuthApiService } from '../../../core/services/auth-api.service';
+import { selectPlatformConfig } from '../../../store/platform/platform.selectors';
+import { updatePlatformConfig } from '../../../store/platform/platform.actions';
 
 @Component({
   selector: 'mc-admin-settings-page',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="max-w-3xl mx-auto p-6 lg:p-8">
       <header class="mb-10">
@@ -25,7 +32,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                 <input
                   id="platform-fee"
                   type="number"
-                  value="10"
+                  [(ngModel)]="platformFee"
                   class="w-full px-4 py-2.5 bg-input-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
@@ -34,7 +41,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                 <input
                   id="escrow-days"
                   type="number"
-                  value="30"
+                  [(ngModel)]="escrowDays"
                   class="w-full px-4 py-2.5 bg-input-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
@@ -47,7 +54,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                   <input
                     id="min-price"
                     type="number"
-                    value="50"
+                    [(ngModel)]="minPrice"
                     class="w-full pl-8 pr-4 py-2.5 bg-input-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
@@ -59,7 +66,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
                   <input
                     id="max-price"
                     type="number"
-                    value="1000"
+                    [(ngModel)]="maxPrice"
                     class="w-full pl-8 pr-4 py-2.5 bg-input-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
@@ -85,13 +92,16 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-lg bg-destructive/5 border border-destructive/10">
               <div>
                 <p class="font-medium text-foreground">Maintenance mode</p>
-                <p class="text-muted-foreground text-sm mt-0.5">Disable platform access for all non-admin users.</p>
+                <p class="text-muted-foreground text-sm mt-0.5">
+                  {{ maintenanceMode ? 'Platform is currently in maintenance mode. Non-admin users cannot access.' : 'Disable platform access for all non-admin users.' }}
+                </p>
               </div>
               <button
-                (click)="onMaintenanceMode()"
-                class="shrink-0 px-4 py-2.5 border border-destructive text-destructive text-sm font-medium rounded-lg hover:bg-destructive/10 transition-colors"
+                (click)="onToggleMaintenanceMode()"
+                [class]="maintenanceMode ? 'border-green-600 text-green-600 hover:bg-green-50' : 'border-destructive text-destructive hover:bg-destructive/10'"
+                class="shrink-0 px-4 py-2.5 border text-sm font-medium rounded-lg transition-colors"
               >
-                Enable maintenance mode
+                {{ maintenanceMode ? 'Disable maintenance mode' : 'Enable maintenance mode' }}
               </button>
             </div>
           </div>
@@ -101,24 +111,70 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AdminSettingsPageComponent {
+export class AdminSettingsPageComponent implements OnInit {
+  private readonly store = inject(Store<AppState>);
   private readonly toast = inject(ToastService);
   private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly authApi = inject(AuthApiService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
-  onSaveSettings(): void {
-    this.toast.success('Platform settings saved successfully.');
+  platformFee = 10;
+  escrowDays = 30;
+  minPrice = 50;
+  maxPrice = 1000;
+  maintenanceMode = false;
+
+  ngOnInit(): void {
+    this.store.select(selectPlatformConfig).pipe(take(1)).subscribe((config) => {
+      this.platformFee = config.platformFeePercent ?? 10;
+      this.escrowDays = config.escrowDays ?? 30;
+      this.minPrice = config.minSubscriptionPrice ?? 50;
+      this.maxPrice = config.maxSubscriptionPrice ?? 1000;
+      this.maintenanceMode = config.maintenanceMode ?? false;
+      this.cdr.markForCheck();
+    });
   }
 
-  async onMaintenanceMode(): Promise<void> {
-    const confirmed = await this.confirmDialog.confirm({
-      title: 'Enable Maintenance Mode',
-      message: 'This will disable platform access for all non-admin users. Are you sure you want to continue?',
-      confirmLabel: 'Enable',
-      cancelLabel: 'Cancel',
-      variant: 'danger',
+  onSaveSettings(): void {
+    const config = {
+      platformFeePercent: this.platformFee,
+      escrowDays: this.escrowDays,
+      minSubscriptionPrice: this.minPrice,
+      maxSubscriptionPrice: this.maxPrice,
+    };
+    this.authApi.savePlatformConfig(config).subscribe({
+      next: () => {
+        this.store.dispatch(updatePlatformConfig({ config }));
+        this.toast.success('Platform settings saved successfully.');
+      },
+      error: () => {
+        this.toast.error('Failed to save settings. Please try again.');
+      },
     });
-    if (confirmed) {
-      this.toast.success('Maintenance mode has been enabled.');
-    }
+  }
+
+  async onToggleMaintenanceMode(): Promise<void> {
+    const enabling = !this.maintenanceMode;
+    const confirmed = await this.confirmDialog.confirm({
+      title: enabling ? 'Enable Maintenance Mode' : 'Disable Maintenance Mode',
+      message: enabling
+        ? 'This will disable platform access for all non-admin users. Are you sure?'
+        : 'This will restore platform access for all users. Are you sure?',
+      confirmLabel: enabling ? 'Enable' : 'Disable',
+      cancelLabel: 'Cancel',
+      variant: enabling ? 'danger' : 'primary',
+    });
+    if (!confirmed) return;
+    this.authApi.savePlatformConfig({ maintenanceMode: enabling }).subscribe({
+      next: () => {
+        this.maintenanceMode = enabling;
+        this.store.dispatch(updatePlatformConfig({ config: { maintenanceMode: enabling } }));
+        this.toast.success(enabling ? 'Maintenance mode enabled.' : 'Maintenance mode disabled.');
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.toast.error('Failed to update maintenance mode. Please try again.');
+      },
+    });
   }
 }

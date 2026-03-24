@@ -11,6 +11,16 @@ import type {
   AdminPayment,
 } from '../../core/models/dashboard.model';
 
+export const loadAdminPayments = createAction(
+  '[Admin] Load Payments',
+  props<{ payments: AdminPayment[] }>(),
+);
+
+export const releasePayment = createAction(
+  '[Admin] Release Payment',
+  props<{ paymentId: string }>(),
+);
+
 export const loadAdminData = createAction('[Admin] Load Data', props<{
   stats: AdminStat[];
   pendingActions: PendingAction[];

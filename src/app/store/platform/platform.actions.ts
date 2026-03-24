@@ -6,4 +6,9 @@ export const loadPlatformConfig = createAction(
   props<{ config: PlatformConfig }>(),
 );
 
+export const updatePlatformConfig = createAction(
+  '[Platform] Update Config',
+  props<{ config: Partial<PlatformConfig> }>(),
+);
+
 export const resetPlatform = createAction('[Platform] Reset');

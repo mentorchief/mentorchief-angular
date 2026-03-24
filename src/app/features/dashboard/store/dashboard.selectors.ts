@@ -330,7 +330,7 @@ export const selectMenteeReportsWithMenteeNames = createSelector(
   (reports, mentees, users) =>
     reports.map((r) => ({
       ...r,
-      menteeName: mentees.find((m) => String(m.id) === r.menteeId)?.name ?? users.find((u) => u.id === r.menteeId)?.name ?? `Mentee #${r.menteeId}`,
+      menteeName: r.menteeName ?? mentees.find((m) => String(m.id) === r.menteeId)?.name ?? users.find((u) => u.id === r.menteeId)?.name ?? `Mentee #${r.menteeId}`,
     })),
 );
 
@@ -351,6 +351,10 @@ export const selectMenteeReportsForCurrentMentor = createSelector(
 /** Unified pending item. */
 export interface UnifiedPendingItem {
   id: number;
+  /** Supabase mentorships UUID — used for accept/decline API calls */
+  mentorshipId?: string;
+  /** Supabase UUID of the mentee — used to load their reports */
+  menteeUuid?: string;
   name: string;
   goalOrPlan: string;
   detail: string;
@@ -371,7 +375,7 @@ export const selectPendingRequestsWithLatestReport = createSelector(
   (requests, reports): PendingRequestWithReport[] =>
     requests.map((request) => {
       const menteeReports = reports
-        .filter((r) => r.menteeName === request.name)
+        .filter((r) => request.menteeUuid ? r.menteeId === request.menteeUuid : r.menteeName === request.name)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       return { request, latestReport: menteeReports[0] ?? null };
     }),
@@ -388,11 +392,14 @@ export const selectPastMentorsWithReviews = createSelector(
   selectMenteeReviews,
   selectMenteeReports,
   (past: PastMentorSummary[], reviews: MentorReview[], reports: MenteeReport[]) =>
-    past.map((mentor) => ({
-      ...mentor,
-      review: reviews.find((r) => r.mentorId === String(mentor.id)),
-      report: reports.find((r) => r.mentorId === String(mentor.id)),
-    })),
+    past.map((mentor) => {
+      const mentorUuid = mentor.mentorUuid ?? null;
+      return {
+        ...mentor,
+        review: mentorUuid ? reviews.find((r) => r.mentorId === mentorUuid) : undefined,
+        report: mentorUuid ? reports.find((r) => r.mentorId === mentorUuid) : undefined,
+      };
+    }),
 );
 
 export const selectMyMenteesPending = createSelector(selectMyMentees, (list) =>
@@ -405,34 +412,18 @@ export const selectMyMenteesActive = createSelector(selectMyMentees, (list) =>
 /** Unified pending (dashboard + my-mentees). */
 export const selectAllUnifiedPending = createSelector(
   selectPendingRequestsWithLatestReport,
-  selectMyMenteesPending,
-  selectMenteeReportsWithMenteeNames,
-  (pendingWithReports, pendingMentees, reports): UnifiedPendingItem[] => {
-    const fromRequests: UnifiedPendingItem[] = pendingWithReports.map((item) => ({
+  (pendingWithReports): UnifiedPendingItem[] =>
+    pendingWithReports.map((item) => ({
       id: item.request.id,
+      mentorshipId: item.request.mentorshipId,
+      menteeUuid: item.request.menteeUuid,
       name: item.request.name,
       goalOrPlan: item.request.goal,
       detail: item.request.message,
       rating: item.request.rating,
       source: 'request' as const,
       latestReport: item.latestReport,
-    }));
-    const fromMentees: UnifiedPendingItem[] = pendingMentees.map((m) => {
-      const menteeReports = reports
-        .filter((r) => r.menteeName === m.name)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      return {
-        id: m.id,
-        name: m.name,
-        goalOrPlan: m.plan,
-        detail: m.email,
-        rating: null,
-        source: 'mentee' as const,
-        latestReport: menteeReports[0] ?? null,
-      };
-    });
-    return [...fromRequests, ...fromMentees];
-  },
+    })),
 );
 
 /** Chat / conversations */

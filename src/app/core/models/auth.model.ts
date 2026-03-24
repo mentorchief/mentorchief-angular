@@ -7,6 +7,8 @@ import { UserRole } from './user.model';
  */
 export interface AuthState {
   userId: string | null;
+  /** Admin-only: ephemeral view-mode override. null = use real user.role */
+  activeRole: UserRole | null;
   loading: boolean;
   error: string | null;
 }

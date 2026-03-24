@@ -9,10 +9,12 @@ import {
   signup,
   signupFailure,
   signupSuccess,
+  switchActiveRole,
 } from './auth.actions';
 
 const initialState: AuthState = {
   userId: null,
+  activeRole: null,
   loading: false,
   error: null,
 };
@@ -40,5 +42,9 @@ export const authReducer = createReducer(
     userId: userId ?? null,
   })),
   on(logout, (): AuthState => initialState),
+  on(switchActiveRole, (state, { role }): AuthState => ({
+    ...state,
+    activeRole: role,
+  })),
 );
 
