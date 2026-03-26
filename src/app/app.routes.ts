@@ -62,6 +62,7 @@ import { AboutPageComponent } from './features/public/smart/about-page.component
 import { TermsPageComponent } from './features/public/smart/terms-page.component';
 import { PrivacyPageComponent } from './features/public/smart/privacy-page.component';
 import { HelpPageComponent } from './features/public/smart/help-page.component';
+import { NotFoundPageComponent } from './features/public/smart/not-found-page.component';
 
 export const routes: Routes = [
   {
@@ -156,5 +157,9 @@ export const routes: Routes = [
       { path: 'notifications', component: NotificationsPageComponent },
     ],
   },
-  { path: '**', redirectTo: '', pathMatch: 'full' },
+  {
+    path: '**',
+    component: LayoutComponent,
+    children: [{ path: '', component: NotFoundPageComponent }],
+  },
 ];

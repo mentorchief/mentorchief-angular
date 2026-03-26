@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, 
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { Store } from '@ngrx/store';
 import { Subject, debounceTime, distinctUntilChanged, take, takeUntil } from 'rxjs';
 import { map } from 'rxjs';
@@ -36,7 +37,7 @@ const PAGE_SIZE = 10;
 @Component({
   selector: 'mc-my-mentees-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PaginationComponent],
+  imports: [CommonModule, FormsModule, FontAwesomeModule, RouterLink, PaginationComponent],
   template: `
     <div class="p-6 lg:p-8">
       <div class="mb-8">
@@ -111,6 +112,12 @@ const PAGE_SIZE = 10;
       <!-- Active Mentees (BE-driven) -->
       <div>
         <h2 class="text-lg text-foreground mb-4">Active Mentees</h2>
+        <div class="flex items-start gap-3 p-4 bg-accent/50 border border-primary/10 rounded-md mb-4">
+          <fa-icon [icon]="['fas', 'circle-info']" class="text-primary w-4 h-4 mt-0.5" />
+          <p class="text-muted-foreground text-xs">
+            Message your mentees anytime during their subscription. When the subscription period ends, you can submit a progress report and the mentee's payment will be released from escrow to your account.
+          </p>
+        </div>
         <div class="bg-card rounded-lg border border-border overflow-hidden">
           <div class="p-4 border-b border-border">
             <input
@@ -314,6 +321,16 @@ export class MyMenteesPageComponent implements OnInit, OnDestroy {
             request: { id: item.id, name: item.name, goal: item.goalOrPlan, message: item.detail, rating: item.rating },
           }));
           this.createConversationForMentee(item);
+          // Notify mentee that mentor accepted
+          if (item.menteeUuid) {
+            this.authApi.createNotification({
+              userId: item.menteeUuid,
+              type: 'mentorship_request',
+              title: 'Mentorship request accepted!',
+              body: `Your mentor has accepted your request. Please contact the admin via WhatsApp to arrange payment.`,
+              metadata: { mentorshipId: item.mentorshipId },
+            }).subscribe();
+          }
           this.toast.success(`${item.name} has been added to your mentees.`);
           this.fetchActiveMentees(); // Refresh BE list
         },
@@ -368,6 +385,16 @@ export class MyMenteesPageComponent implements OnInit, OnDestroy {
       this.authApi.declineMentorship(item.mentorshipId).subscribe({
         next: () => {
           this.store.dispatch(declineMentorshipRequest({ requestId: item.id }));
+          // Notify mentee that mentor declined
+          if (item.menteeUuid) {
+            this.authApi.createNotification({
+              userId: item.menteeUuid,
+              type: 'mentorship_request',
+              title: 'Mentorship request declined',
+              body: `Unfortunately, the mentor has declined your request. You can browse other mentors and try again.`,
+              metadata: { mentorshipId: item.mentorshipId },
+            }).subscribe();
+          }
           this.toast.success(`Request from ${item.name} has been declined.`);
         },
         error: () => { this.toast.error('Failed to decline request. Please try again.'); },

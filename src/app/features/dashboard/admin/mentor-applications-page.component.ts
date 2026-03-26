@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { AuthApiService } from '../../../core/services/auth-api.service';
 import { ToastService } from '../../../shared/services/toast.service';
@@ -9,7 +10,7 @@ import type { User } from '../../../core/models/user.model';
 @Component({
   selector: 'mc-admin-mentor-applications-page',
   standalone: true,
-  imports: [CommonModule, FontAwesomeModule],
+  imports: [CommonModule, FormsModule, FontAwesomeModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="p-6 lg:p-8">
@@ -159,6 +160,41 @@ import type { User } from '../../../core/models/user.model';
           }
         </div>
       }
+
+      <!-- Rejection Reason Modal -->
+      @if (rejectModalUser) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" (click)="closeRejectModal()">
+          <div class="bg-card rounded-xl border border-border shadow-lg w-full max-w-md mx-4 p-6" (click)="$event.stopPropagation()">
+            <h3 class="text-lg font-semibold text-foreground mb-1">Reject Application</h3>
+            <p class="text-sm text-muted-foreground mb-4">
+              Reject {{ rejectModalUser.name }}'s mentor application. Optionally provide a reason.
+            </p>
+            <textarea
+              [(ngModel)]="rejectionReason"
+              placeholder="Reason for rejection (optional)..."
+              rows="4"
+              class="w-full px-4 py-2.5 bg-input-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+            ></textarea>
+            <div class="flex justify-end gap-3 mt-5">
+              <button
+                type="button"
+                (click)="closeRejectModal()"
+                class="px-4 py-2.5 border border-border text-foreground rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                (click)="confirmReject()"
+                [disabled]="actionInProgress === rejectModalUser.id"
+                class="px-4 py-2.5 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {{ actionInProgress === rejectModalUser.id ? 'Rejecting...' : 'Reject' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
 })
@@ -172,6 +208,8 @@ export class AdminMentorApplicationsPageComponent implements OnInit {
   loading = true;
   actionInProgress: string | null = null;
   detailsUser: User | null = null;
+  rejectModalUser: User | null = null;
+  rejectionReason = '';
 
   ngOnInit(): void {
     this.load();
@@ -212,6 +250,13 @@ export class AdminMentorApplicationsPageComponent implements OnInit {
     this.cdr.markForCheck();
     this.authApi.approveMentor(user.id).subscribe({
       next: () => {
+        // Notify mentor of approval
+        this.authApi.createNotification({
+          userId: user.id,
+          type: 'account_updated',
+          title: 'Congratulations! You are approved',
+          body: 'Your mentor application has been approved. You can now start accepting mentees.',
+        }).subscribe();
         this.actionInProgress = null;
         this.pendingMentors = this.pendingMentors.filter((u) => u.id !== user.id);
         this.toast.success(`${user.name} has been approved as a mentor.`);
@@ -225,20 +270,43 @@ export class AdminMentorApplicationsPageComponent implements OnInit {
     });
   }
 
-  async reject(user: User): Promise<void> {
-    const confirmed = await this.confirmDialog.confirm({
-      title: 'Reject application',
-      message: `Reject ${user.name} as a mentor? They will see a rejected status when they next sign in.`,
-      confirmLabel: 'Reject',
-      cancelLabel: 'Cancel',
-      variant: 'danger',
-    });
-    if (!confirmed) return;
+  reject(user: User): void {
+    this.rejectModalUser = user;
+    this.rejectionReason = '';
+    this.cdr.markForCheck();
+  }
+
+  closeRejectModal(): void {
+    this.rejectModalUser = null;
+    this.rejectionReason = '';
+    this.cdr.markForCheck();
+  }
+
+  confirmReject(): void {
+    const user = this.rejectModalUser;
+    if (!user) return;
+
     this.actionInProgress = user.id;
     this.cdr.markForCheck();
-    this.authApi.rejectMentor(user.id).subscribe({
+
+    const reason = this.rejectionReason.trim() || undefined;
+
+    this.authApi.rejectMentor(user.id, reason).subscribe({
       next: () => {
+        // Create notification for the rejected mentor
+        const notifBody = reason
+          ? 'Your application was rejected. Reason: ' + reason
+          : 'Your application was not approved at this time.';
+        this.authApi.createNotification({
+          userId: user.id,
+          type: 'account_updated',
+          title: 'Application rejected',
+          body: notifBody,
+        }).subscribe();
+
         this.actionInProgress = null;
+        this.rejectModalUser = null;
+        this.rejectionReason = '';
         this.pendingMentors = this.pendingMentors.filter((u) => u.id !== user.id);
         this.toast.success(`${user.name}'s application has been rejected.`);
         this.cdr.markForCheck();

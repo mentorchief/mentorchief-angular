@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
@@ -10,12 +10,14 @@ import { selectRegistrationData } from '../store/registration.selectors';
 import { UserRole } from '../../../core/models/user.model';
 import { updateData, setCurrentStep } from '../store/registration.actions';
 import { ROUTES } from '../../../core/routes';
+import { AuthApiService } from '../../../core/services/auth-api.service';
 
 interface BioFormData {
   bio: string;
   skills: string[];
   tools: string[];
   portfolioUrl: string;
+  expertiseCategory: string;
 }
 
 @Component({
@@ -33,6 +35,28 @@ interface BioFormData {
         </p>
       </div>
       <div class="p-6 space-y-6">
+        <!-- Primary Expertise Category (Mentor only) -->
+        @if (isMentor) {
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-foreground">
+              Primary Expertise Category <span class="text-destructive">*</span>
+            </label>
+            <select
+              [(ngModel)]="formData.expertiseCategory"
+              [class.border-destructive]="errors['expertiseCategory']"
+              class="w-full px-4 py-2.5 bg-input-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-primary transition-colors"
+            >
+              <option value="">Select a category</option>
+              @for (cat of expertiseCategories; track cat.id) {
+                <option [value]="cat.id">{{ cat.name }}</option>
+              }
+            </select>
+            @if (errors['expertiseCategory']) {
+              <p class="text-sm text-destructive">{{ errors['expertiseCategory'] }}</p>
+            }
+          </div>
+        }
+
         <!-- Bio -->
         <div class="space-y-2">
           <label class="block text-sm font-medium text-foreground">
@@ -141,21 +165,25 @@ interface BioFormData {
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class BiographyPageComponent {
+export class BiographyPageComponent implements OnInit {
   private readonly store = inject(Store<AppState>);
   private readonly router = inject(Router);
+  private readonly authApi = inject(AuthApiService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   formData: BioFormData = {
     bio: '',
     skills: [],
     tools: [],
     portfolioUrl: '',
+    expertiseCategory: '',
   };
 
   skillInput = '';
   toolInput = '';
   errors: Record<string, string> = {};
   isMentor = false;
+  expertiseCategories: { id: string; name: string }[] = [];
 
   constructor() {
     this.store.select(selectRegistrationData).pipe(take(1)).subscribe((data) => {
@@ -165,8 +193,18 @@ export class BiographyPageComponent {
         skills: [...data.skills],
         tools: [...data.tools],
         portfolioUrl: data.portfolioUrl,
+        expertiseCategory: data.expertiseCategory,
       };
     });
+  }
+
+  ngOnInit(): void {
+    if (this.isMentor) {
+      this.authApi.getExpertiseCategories().pipe(take(1)).subscribe((categories) => {
+        this.expertiseCategories = categories;
+        this.cdr.markForCheck();
+      });
+    }
   }
 
   addSkill(event: Event): void {
@@ -197,6 +235,9 @@ export class BiographyPageComponent {
 
   validate(): boolean {
     this.errors = {};
+    if (this.isMentor && !this.formData.expertiseCategory) {
+      this.errors['expertiseCategory'] = 'Please select a primary expertise category';
+    }
     if (!this.formData.bio.trim()) this.errors['bio'] = 'Biography is required';
     else if (this.formData.bio.trim().length < 50) this.errors['bio'] = 'Biography must be at least 50 characters';
     if (this.formData.skills.length === 0) this.errors['skills'] = 'Add at least one skill';

@@ -6,6 +6,8 @@ export interface ChatMessageCore {
   senderId: string;
   text: string;
   timestamp: string;
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'pdf' | 'doc';
 }
 
 /** Display type with sender info joined from users slice. */

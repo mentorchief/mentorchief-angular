@@ -8,8 +8,8 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
 import { ToastService } from '../../../shared/services/toast.service';
 import type { AppState } from '../../../store/app.state';
 import { selectAdminPayments } from '../store/dashboard.selectors';
-import { releasePayment } from '../../../store/admin/admin.actions';
-import { AuthApiService } from '../../../core/services/auth-api.service';
+import { addPayment, refundPayment, releasePayment } from '../../../store/admin/admin.actions';
+import { AuthApiService, type MentorshipWithProfiles } from '../../../core/services/auth-api.service';
 import type { AdminPayment } from '../../../core/models/dashboard.model';
 import { selectMenteeReports } from '../../../store/reports';
 
@@ -21,9 +21,17 @@ const PAGE_SIZE = 10;
   imports: [CommonModule, FormsModule, PaginationComponent],
   template: `
     <div class="p-6 lg:p-8">
-      <div class="mb-8">
-        <h1 class="text-2xl lg:text-3xl text-foreground">Payments</h1>
-        <p class="text-muted-foreground mt-1">Monitor and release platform transactions</p>
+      <div class="mb-8 flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl lg:text-3xl text-foreground">Payments</h1>
+          <p class="text-muted-foreground mt-1">Monitor and release platform transactions</p>
+        </div>
+        <button
+          (click)="openCreateModal()"
+          class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
+        >
+          + Create Payment
+        </button>
       </div>
 
       <!-- Summary Cards -->
@@ -62,7 +70,7 @@ const PAGE_SIZE = 10;
             class="px-4 py-2 bg-input-background border border-border rounded-md"
           >
             <option value="">All Status</option>
-            <option value="completed">Completed</option>
+            <option value="completed">Released</option>
             <option value="in_escrow">In Escrow</option>
             <option value="disputed">Disputed</option>
             <option value="refunded">Refunded</option>
@@ -99,18 +107,29 @@ const PAGE_SIZE = 10;
                     </span>
                   </td>
                   <td class="px-5 py-4">
-                    @if (payment.status === 'in_escrow' && hasReport(payment)) {
-                      <button
-                        (click)="onReleasePayment(payment)"
-                        [disabled]="releasingId === payment.id"
-                        class="px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors"
-                      >
-                        {{ releasingId === payment.id ? 'Releasing…' : 'Release' }}
-                      </button>
-                    } @else if (payment.status === 'in_escrow') {
-                      <span class="text-xs text-muted-foreground" title="No report submitted yet">No report yet</span>
+                    @if (payment.status === 'in_escrow') {
+                      <div class="flex items-center gap-2">
+                        @if (hasReport(payment)) {
+                          <button
+                            (click)="onReleasePayment(payment)"
+                            [disabled]="releasingId === payment.id"
+                            class="px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors"
+                          >
+                            {{ releasingId === payment.id ? 'Releasing...' : 'Release' }}
+                          </button>
+                        } @else {
+                          <span class="text-xs text-muted-foreground" title="No report submitted yet">No report yet</span>
+                        }
+                        <button
+                          (click)="onRefundPayment(payment)"
+                          [disabled]="refundingId === payment.id"
+                          class="px-3 py-1.5 bg-destructive text-destructive-foreground text-xs rounded-md hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+                        >
+                          {{ refundingId === payment.id ? 'Refunding...' : 'Refund' }}
+                        </button>
+                      </div>
                     } @else {
-                      <span class="text-xs text-muted-foreground">—</span>
+                      <span class="text-xs text-muted-foreground">&mdash;</span>
                     }
                   </td>
                 </tr>
@@ -128,6 +147,93 @@ const PAGE_SIZE = 10;
         </div>
       </div>
     </div>
+
+    <!-- Create Payment Modal -->
+    @if (showCreateModal) {
+      <div class="fixed inset-0 z-50 flex items-center justify-center">
+        <div class="absolute inset-0 bg-black/50" (click)="closeCreateModal()"></div>
+        <div class="relative bg-card rounded-lg border border-border shadow-lg w-full max-w-lg mx-4 p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-lg font-semibold text-foreground">Create Payment Record</h2>
+            <button (click)="closeCreateModal()" class="text-muted-foreground hover:text-foreground transition-colors">
+              &#x2715;
+            </button>
+          </div>
+
+          @if (loadingMentorships) {
+            <div class="flex items-center justify-center py-8">
+              <span class="text-muted-foreground text-sm">Loading mentorships...</span>
+            </div>
+          } @else {
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-foreground mb-1">Mentorship</label>
+                <select
+                  [(ngModel)]="createForm.mentorshipId"
+                  (ngModelChange)="onMentorshipSelect($event)"
+                  class="w-full px-4 py-2 bg-input-background border border-border rounded-md text-sm"
+                >
+                  <option value="">Select a mentorship...</option>
+                  @for (m of mentorships; track m.id) {
+                    <option [value]="m.id">
+                      {{ m.mentee_profile?.name || 'Unknown' }} &larr; {{ m.mentor_profile?.name || 'Unknown' }} ({{ m.status }})
+                    </option>
+                  }
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-foreground mb-1">Amount ($)</label>
+                <input
+                  type="number"
+                  [(ngModel)]="createForm.amount"
+                  min="1"
+                  step="0.01"
+                  placeholder="0.00"
+                  class="w-full px-4 py-2 bg-input-background border border-border rounded-md text-sm"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-foreground mb-1">Payment Reference <span class="text-muted-foreground font-normal">(optional)</span></label>
+                <input
+                  type="text"
+                  [(ngModel)]="createForm.paymentReference"
+                  placeholder="e.g. bank transfer ref, invoice #"
+                  class="w-full px-4 py-2 bg-input-background border border-border rounded-md text-sm"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-foreground mb-1">Admin Notes <span class="text-muted-foreground font-normal">(optional)</span></label>
+                <textarea
+                  [(ngModel)]="createForm.adminNotes"
+                  rows="3"
+                  placeholder="Internal notes about this payment..."
+                  class="w-full px-4 py-2 bg-input-background border border-border rounded-md text-sm resize-none"
+                ></textarea>
+              </div>
+
+              <div class="flex justify-end gap-3 pt-2">
+                <button
+                  (click)="closeCreateModal()"
+                  class="px-4 py-2 border border-border text-foreground rounded-md hover:bg-muted/50 transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  (click)="onCreatePayment()"
+                  [disabled]="creatingPayment || !createForm.mentorshipId || !createForm.amount"
+                  class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors text-sm font-medium"
+                >
+                  {{ creatingPayment ? 'Creating...' : 'Create Payment' }}
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -147,6 +253,20 @@ export class AdminPaymentsPageComponent implements OnInit, OnDestroy {
   searchQuery = '';
   filterStatus = '';
   releasingId: string | null = null;
+  refundingId: string | null = null;
+
+  // Create payment modal state
+  showCreateModal = false;
+  loadingMentorships = false;
+  creatingPayment = false;
+  mentorships: MentorshipWithProfiles[] = [];
+  createForm = {
+    mentorshipId: '',
+    amount: null as number | null,
+    paymentReference: '',
+    adminNotes: '',
+  };
+  private selectedMentorship: MentorshipWithProfiles | null = null;
 
   ngOnInit(): void {
     this.store.select(selectAdminPayments).pipe(takeUntil(this.destroy$)).subscribe((list) => {
@@ -202,6 +322,8 @@ export class AdminPaymentsPageComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
+  // ─── Release Payment ─────────────────────────────────────────────────────
+
   async onReleasePayment(payment: AdminPayment): Promise<void> {
     const confirmed = await this.confirmDialog.confirm({
       title: 'Release Payment',
@@ -239,6 +361,166 @@ export class AdminPaymentsPageComponent implements OnInit, OnDestroy {
       },
     });
   }
+
+  // ─── Refund Payment ───────────────────────────────────────────────────────
+
+  async onRefundPayment(payment: AdminPayment): Promise<void> {
+    const confirmed = await this.confirmDialog.confirm({
+      title: 'Refund Payment',
+      message: `Refund $${payment.amount} to ${payment.mentee}? This action cannot be undone.`,
+      confirmLabel: 'Yes, Refund',
+      cancelLabel: 'Cancel',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    this.refundingId = payment.id;
+    this.cdr.markForCheck();
+
+    this.authApi.refundPayment(payment.id).subscribe({
+      next: () => {
+        this.store.dispatch(refundPayment({ paymentId: payment.id }));
+        // Notify mentee about refund
+        if (payment.menteeId) {
+          this.authApi.createNotification({
+            userId: payment.menteeId,
+            type: 'payment_updated',
+            title: 'Payment refunded',
+            body: `Your payment of $${payment.amount} has been refunded.`,
+            metadata: { paymentId: payment.id },
+          }).subscribe();
+        }
+        // Notify mentor about refund
+        if (payment.mentorId) {
+          this.authApi.createNotification({
+            userId: payment.mentorId,
+            type: 'payment_updated',
+            title: 'Payment refunded',
+            body: `A payment of $${payment.amount} from ${payment.mentee} has been refunded.`,
+            metadata: { paymentId: payment.id },
+          }).subscribe();
+        }
+        this.toast.success(`Payment of $${payment.amount} refunded to ${payment.mentee}.`);
+        this.refundingId = null;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.toast.error('Failed to refund payment. Please try again.');
+        this.refundingId = null;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  // ─── Create Payment Modal ─────────────────────────────────────────────────
+
+  openCreateModal(): void {
+    this.showCreateModal = true;
+    this.loadingMentorships = true;
+    this.resetCreateForm();
+    this.cdr.markForCheck();
+
+    this.authApi.getAllMentorships().subscribe({
+      next: (mentorships) => {
+        this.mentorships = mentorships.filter(
+          (m) => m.status === 'active' || m.status === 'pending',
+        );
+        this.loadingMentorships = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.toast.error('Failed to load mentorships.');
+        this.loadingMentorships = false;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  closeCreateModal(): void {
+    this.showCreateModal = false;
+    this.resetCreateForm();
+    this.cdr.markForCheck();
+  }
+
+  onMentorshipSelect(mentorshipId: string): void {
+    this.selectedMentorship = this.mentorships.find((m) => m.id === mentorshipId) ?? null;
+  }
+
+  onCreatePayment(): void {
+    if (!this.selectedMentorship || !this.createForm.amount) return;
+
+    const mentorship = this.selectedMentorship;
+    const menteeId = mentorship.mentee_id;
+    const mentorId = mentorship.mentor_id;
+    const menteeName = mentorship.mentee_profile?.name ?? 'Unknown';
+    const mentorName = mentorship.mentor_profile?.name ?? 'Unknown';
+
+    this.creatingPayment = true;
+    this.cdr.markForCheck();
+
+    this.authApi.createPaymentRecord({
+      menteeId,
+      mentorId,
+      amount: this.createForm.amount,
+      currency: 'usd',
+      planName: 'admin_manual',
+      paymentReference: this.createForm.paymentReference || undefined,
+      adminNotes: this.createForm.adminNotes || undefined,
+    }).subscribe({
+      next: (paymentRow) => {
+        // Add payment to the store
+        const newPayment: AdminPayment = {
+          id: paymentRow.id,
+          date: new Date(paymentRow.created_at).toLocaleDateString(),
+          mentee: menteeName,
+          mentor: mentorName,
+          amount: paymentRow.amount,
+          status: 'in_escrow',
+          menteeId,
+          mentorId,
+        };
+        this.store.dispatch(addPayment({ payment: newPayment }));
+
+        // Activate the mentorship
+        this.authApi.adminActivateMentorship(mentorship.id).subscribe();
+
+        // Notify mentee
+        this.authApi.createNotification({
+          userId: menteeId,
+          type: 'payment_updated',
+          title: 'Mentorship started',
+          body: 'Your payment has been confirmed and mentorship is now active.',
+          metadata: { paymentId: paymentRow.id, mentorshipId: mentorship.id },
+        }).subscribe();
+
+        // Notify mentor
+        this.authApi.createNotification({
+          userId: mentorId,
+          type: 'payment_updated',
+          title: 'New payment received',
+          body: 'Payment has been confirmed for your mentorship.',
+          metadata: { paymentId: paymentRow.id, mentorshipId: mentorship.id },
+        }).subscribe();
+
+        this.toast.success(`Payment of $${this.createForm.amount} created successfully.`);
+        this.creatingPayment = false;
+        this.closeCreateModal();
+      },
+      error: () => {
+        this.toast.error('Failed to create payment. Please try again.');
+        this.creatingPayment = false;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  private resetCreateForm(): void {
+    this.createForm = { mentorshipId: '', amount: null, paymentReference: '', adminNotes: '' };
+    this.selectedMentorship = null;
+    this.creatingPayment = false;
+  }
+
+  // ─── Summary Cards ────────────────────────────────────────────────────────
 
   get totalVolume(): number {
     return this.paymentsList.reduce((sum, p) => sum + p.amount, 0);

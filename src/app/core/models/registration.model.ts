@@ -21,6 +21,13 @@ import type { UserRole } from './user.model';
 
 export type RegistrationRole = UserRole.Mentee | UserRole.Mentor | null;
 
+export interface PayoutAccount {
+  type: 'bank' | 'instapay';
+  bankName?: string;
+  accountNumber?: string;
+  instapayNumber?: string;
+}
+
 export interface RegistrationData {
   role: RegistrationRole;
   firstName: string;
@@ -37,10 +44,12 @@ export interface RegistrationData {
   skills: string[];
   tools: string[];
   portfolioUrl: string;
+  expertiseCategory: string;
   subscriptionCost: string;
   mentorPlans: MentorPlan[];
   availability: string[];
   menteeCapacity: string;
+  payoutAccount: PayoutAccount | null;
 }
 
 export interface RegistrationState {

@@ -1,8 +1,12 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { Store } from '@ngrx/store';
+import { map } from 'rxjs';
 import { HELP_CATEGORIES } from '../../../core/data/help-categories.data';
+import { selectPlatformConfig } from '../../../store/platform/platform.selectors';
+import type { AppState } from '../../../store/app.state';
 
 @Component({
   selector: 'mc-help-page',
@@ -59,31 +63,45 @@ import { HELP_CATEGORIES } from '../../../core/data/help-categories.data';
         </div>
       </div>
 
-      <!-- Contact -->
-      <div class="grid md:grid-cols-2 gap-6">
-        <div class="bg-card rounded-lg border border-border p-6">
-          <div class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-            <fa-icon [icon]="['fas', 'message']" class="text-2xl w-6 h-6" />
+      <!-- Contact Support -->
+      <div class="mb-12">
+        <h2 class="text-2xl text-foreground mb-6">Contact Support</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div class="bg-card rounded-lg border border-border p-6">
+            <div class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+              <fa-icon [icon]="['fas', 'envelope']" class="text-2xl w-6 h-6" />
+            </div>
+            <h3 class="text-foreground font-medium mb-2">Email Support</h3>
+            <p class="text-muted-foreground text-sm mb-4">
+              Send us an email and we'll respond within 24 hours.
+            </p>
+            <a href="mailto:support@mentorchief.com" class="px-4 py-2 border border-border text-foreground rounded-md hover:bg-muted inline-block no-underline">
+              support&#64;mentorchief.com
+            </a>
           </div>
-          <h3 class="text-foreground font-medium mb-2">Chat with Us</h3>
-          <p class="text-muted-foreground text-sm mb-4">
-            Get instant help from our support team. Available Mon-Fri, 9am-6pm EST.
-          </p>
-          <a href="mailto:support@mentorchief.com" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 inline-block no-underline">
-            Start Chat
-          </a>
-        </div>
-        <div class="bg-card rounded-lg border border-border p-6">
-          <div class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-            <fa-icon [icon]="['fas', 'envelope']" class="text-2xl w-6 h-6" />
+          <div class="bg-card rounded-lg border border-border p-6">
+            <div class="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center mb-4">
+              <fa-icon [icon]="['fab', 'whatsapp']" class="text-2xl w-6 h-6 text-green-600" />
+            </div>
+            <h3 class="text-foreground font-medium mb-2">WhatsApp Support</h3>
+            <p class="text-muted-foreground text-sm mb-4">
+              Chat with us on WhatsApp for quick support.
+            </p>
+            @if (adminWhatsapp$ | async; as whatsapp) {
+              <a
+                [href]="'https://wa.me/' + whatsapp"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 inline-block no-underline"
+              >
+                Chat on WhatsApp
+              </a>
+            } @else {
+              <p class="text-muted-foreground text-sm italic">
+                Please reach out via email for now. WhatsApp support coming soon.
+              </p>
+            }
           </div>
-          <h3 class="text-foreground font-medium mb-2">Email Support</h3>
-          <p class="text-muted-foreground text-sm mb-4">
-            Send us an email and we'll respond within 24 hours.
-          </p>
-          <a href="mailto:support@mentorchief.com" class="px-4 py-2 border border-border text-foreground rounded-md hover:bg-muted inline-block no-underline">
-            support&#64;mentorchief.com
-          </a>
         </div>
       </div>
     </div>
@@ -91,6 +109,10 @@ import { HELP_CATEGORIES } from '../../../core/data/help-categories.data';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HelpPageComponent {
+  private readonly store = inject(Store<AppState>);
+  readonly adminWhatsapp$ = this.store.select(selectPlatformConfig).pipe(
+    map((config) => config.adminWhatsapp || ''),
+  );
   readonly helpCategories = HELP_CATEGORIES;
 
   faqs = [

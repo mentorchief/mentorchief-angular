@@ -43,11 +43,17 @@ export const registrationGuard: CanActivateFn = () => {
         return router.createUrlTree([ROUTES.signup]);
       }
       if (user.registered) {
+        // Allow rejected mentors to re-enter registration for reapply flow
+        if (
+          user.role === UserRole.Mentor &&
+          user.mentorApprovalStatus === MentorApprovalStatus.Rejected
+        ) {
+          return true;
+        }
         if (user.role === UserRole.Admin) return router.createUrlTree([ROUTES.admin.dashboard]);
         if (user.role === UserRole.Mentor) {
           const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Pending;
           if (status === MentorApprovalStatus.Pending) return router.createUrlTree([ROUTES.mentor.pending]);
-          if (status === MentorApprovalStatus.Rejected) return router.createUrlTree([ROUTES.mentor.rejected]);
           return router.createUrlTree([ROUTES.mentor.dashboard]);
         }
         return router.createUrlTree([ROUTES.mentee.dashboard]);

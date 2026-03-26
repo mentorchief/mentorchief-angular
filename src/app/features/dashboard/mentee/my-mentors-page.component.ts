@@ -34,6 +34,12 @@ const PAST_PAGE_SIZE = 5;
       <!-- Active Mentorships -->
       <div class="mb-8">
         <h2 class="text-lg text-foreground mb-4">Active Mentorships</h2>
+        <div class="flex items-start gap-3 p-4 bg-accent/50 border border-primary/10 rounded-md mb-4">
+          <fa-icon [icon]="['fas', 'circle-info']" class="text-primary w-4 h-4 mt-0.5" />
+          <p class="text-muted-foreground text-xs">
+            Your active mentors are available to guide you throughout your subscription. Message them anytime. When the subscription period ends, you can leave a review and your mentor may submit a progress report about your development.
+          </p>
+        </div>
         <input
           type="text"
           [ngModel]="activeSearchQuery"

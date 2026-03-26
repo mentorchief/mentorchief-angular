@@ -10,6 +10,7 @@ import type {
   AdminStat,
   MentorStat,
   PendingAction,
+  RecentActivity,
   ReportMetric,
   UserGrowthBar,
 } from '../../../core/models/dashboard.model';
@@ -155,7 +156,64 @@ export const selectMentorEarningsForDisplay = createSelector(selectMentorEarning
   })),
 );
 
-export { selectAdminStats, selectAdminPendingActions, selectAdminRecentActivities, selectPlatformUsers, selectAdminPayments };
+export { selectAdminStats, selectAdminPendingActions, selectPlatformUsers, selectAdminPayments };
+
+/** Derive recent activities from real user + payment data (last 10 events). */
+export const selectAdminRecentActivitiesComputed = createSelector(
+  selectPlatformUsers,
+  selectAdminPayments,
+  (users: User[], payments): RecentActivity[] => {
+    const events: { date: Date; activity: RecentActivity }[] = [];
+
+    // User registrations & mentor applications
+    users.forEach((u) => {
+      if (!u.joinDate) return;
+      const d = new Date(u.joinDate);
+      events.push({
+        date: d,
+        activity: {
+          type: u.role === UserRole.Mentor ? 'Mentor Application' : 'New Registration',
+          name: u.name,
+          detail: u.role === UserRole.Mentor
+            ? `Applied as mentor — ${u.mentorApprovalStatus ?? 'pending'}`
+            : `Registered as ${u.role}`,
+          time: formatRelativeTime(d),
+        },
+      });
+    });
+
+    // Payments
+    payments.forEach((p) => {
+      const d = new Date(p.date);
+      events.push({
+        date: d,
+        activity: {
+          type: p.status === 'refunded' ? 'Refund' : 'Payment',
+          name: `${p.mentee} → ${p.mentor}`,
+          detail: `$${p.amount} — ${p.status}`,
+          time: formatRelativeTime(d),
+        },
+      });
+    });
+
+    // Sort newest first and take 10
+    events.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return events.slice(0, 10).map((e) => e.activity);
+  },
+);
+
+function formatRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 /** Admin stats derived from store (domain only). */
 const selectAdminStatsDomain = createSelector(
@@ -453,8 +511,9 @@ export const selectAdminConversations = selectAllConversations;
 export const selectMentorConversationListItems = createSelector(
   selectMentorConversations,
   selectMentorUnreadByConversation,
-  (conversations, unreadByConv): ConversationListItem[] =>
-    conversations.map((c) => ({
+  (conversations, unreadByConv): ConversationListItem[] =>{
+    console.log(conversations);
+   return conversations.map((c) => ({
       id: c.id,
       name: c.menteeName,
       avatar: '',
@@ -462,8 +521,9 @@ export const selectMentorConversationListItems = createSelector(
       timestamp: c.lastTimestamp,
       unread: (unreadByConv[c.id] ?? 0) > 0,
       unreadCount: unreadByConv[c.id] ?? 0,
-    })),
-);
+    }))
+  }
+  );
 
 /** Conversation id for a mentee. */
 export const selectConversationIdForMentee = (menteeIdOrName: number | string) =>

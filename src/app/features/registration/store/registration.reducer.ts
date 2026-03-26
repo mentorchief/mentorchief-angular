@@ -24,10 +24,12 @@ const initialData: RegistrationData = {
   skills: [],
   tools: [],
   portfolioUrl: '',
+  expertiseCategory: '',
   subscriptionCost: '',
   mentorPlans: [],
   availability: [],
   menteeCapacity: '',
+  payoutAccount: null,
 };
 
 const initialState: RegistrationState = {

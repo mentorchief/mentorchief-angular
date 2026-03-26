@@ -82,10 +82,12 @@ export class RegistrationEffects {
       skills: [],
       tools: [],
       portfolioUrl: '',
+      expertiseCategory: '',
       subscriptionCost: '',
       mentorPlans: [],
       availability: [],
       menteeCapacity: '',
+      payoutAccount: null,
     };
   }
 }

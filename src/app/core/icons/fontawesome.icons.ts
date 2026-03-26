@@ -46,7 +46,7 @@ import {
   faRotateLeft,
   faBan,
 } from '@fortawesome/free-solid-svg-icons';
-import { faGoogle, faLinkedin } from '@fortawesome/free-brands-svg-icons';
+import { faGoogle, faLinkedin, faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 
 export const appFontAwesomeIcons = [
   faStar,
@@ -92,6 +92,7 @@ export const appFontAwesomeIcons = [
   faCircle,
   faGoogle,
   faLinkedin,
+  faWhatsapp,
   faBell,
   faFilePen,
   faCircleXmark,

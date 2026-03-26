@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -7,6 +7,8 @@ import { take } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { selectRegistrationData } from '../store/registration.selectors';
 import { updateData, setCurrentStep } from '../store/registration.actions';
+import { selectAuthUserId } from '../../auth/store/auth.selectors';
+import { AuthApiService } from '../../../core/services/auth-api.service';
 import { ROUTES } from '../../../core/routes';
 
 interface PersonalFormData {
@@ -15,6 +17,7 @@ interface PersonalFormData {
   phone: string;
   location: string;
   gender: string;
+  photo: string | null;
 }
 
 @Component({
@@ -28,6 +31,31 @@ interface PersonalFormData {
         <p class="text-sm text-muted-foreground mt-1">Tell us about yourself</p>
       </div>
       <div class="p-6 space-y-6">
+        <!-- Profile Photo -->
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-foreground">Profile Photo</label>
+          <div class="flex items-center gap-4">
+            @if (photoPreview) {
+              <img [src]="photoPreview" alt="Preview" class="w-20 h-20 rounded-lg object-cover shrink-0" />
+            } @else {
+              <div class="w-20 h-20 bg-muted rounded-lg flex items-center justify-center shrink-0">
+                <span class="text-muted-foreground text-sm">No photo</span>
+              </div>
+            }
+            <div>
+              <label
+                class="inline-block px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm cursor-pointer hover:opacity-90 transition-opacity">
+                {{ uploading ? 'Uploading...' : 'Choose Photo' }}
+                <input type="file" accept="image/jpeg,image/png" (change)="onPhotoSelected($event)" class="hidden" [disabled]="uploading" />
+              </label>
+              <p class="text-xs text-muted-foreground mt-1">JPG or PNG, max 10 MB</p>
+              @if (photoError) {
+                <p class="text-sm text-destructive mt-1">{{ photoError }}</p>
+              }
+            </div>
+          </div>
+        </div>
+
         <!-- Name Fields -->
         <div class="grid md:grid-cols-2 gap-4">
           <div class="space-y-2">
@@ -159,6 +187,8 @@ interface PersonalFormData {
 export class PersonalInfoPageComponent {
   private readonly store = inject(Store<AppState>);
   private readonly router = inject(Router);
+  private readonly authApi = inject(AuthApiService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   formData: PersonalFormData = {
     firstName: '',
@@ -166,9 +196,14 @@ export class PersonalInfoPageComponent {
     phone: '',
     location: '',
     gender: '',
+    photo: null,
   };
 
   errors: Record<string, string> = {};
+  photoPreview: string | null = null;
+  photoError = '';
+  uploading = false;
+  private userId: string | null = null;
 
   readonly countries = [
     'United States', 'United Kingdom', 'Canada', 'Australia', 'Germany',
@@ -179,6 +214,9 @@ export class PersonalInfoPageComponent {
   ];
 
   constructor() {
+    this.store.select(selectAuthUserId).pipe(take(1)).subscribe((id) => {
+      this.userId = id;
+    });
     this.store.select(selectRegistrationData).pipe(take(1)).subscribe((data) => {
       this.formData = {
         firstName: data.firstName,
@@ -186,7 +224,56 @@ export class PersonalInfoPageComponent {
         phone: data.phone,
         location: data.location,
         gender: data.gender,
+        photo: data.photo,
       };
+      if (this.formData.photo) {
+        this.photoPreview = this.formData.photo;
+      }
+    });
+  }
+
+  onPhotoSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    this.photoError = '';
+
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      this.photoError = 'Only JPG and PNG files are allowed.';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      this.photoError = 'File must be under 10 MB.';
+      return;
+    }
+    if (!this.userId) {
+      this.photoError = 'User not found. Please try again.';
+      return;
+    }
+
+    // Show local preview immediately
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.photoPreview = reader.result as string;
+      this.cdr.markForCheck();
+    };
+    reader.readAsDataURL(file);
+
+    // Upload to Supabase
+    this.uploading = true;
+    this.authApi.uploadProfilePhoto(this.userId, file).pipe(take(1)).subscribe({
+      next: (url) => {
+        this.formData.photo = url;
+        this.store.dispatch(updateData({ updates: { photo: url } }));
+        this.uploading = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.photoError = 'Upload failed. Please try again.';
+        this.uploading = false;
+        this.cdr.markForCheck();
+      },
     });
   }
 

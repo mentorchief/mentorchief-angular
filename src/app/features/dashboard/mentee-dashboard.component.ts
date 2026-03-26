@@ -70,10 +70,25 @@ import { AuthApiService } from '../../core/services/auth-api.service';
               </div>
             } @else {
               <p class="text-muted-foreground text-sm">
-                You don’t have an active mentorship yet.
+                You don't have an active mentorship yet.
                 <a routerLink="/browse" class="text-primary no-underline hover:underline">Find a mentor</a>
                 to start your first subscription.
               </p>
+              <!-- Getting started hint -->
+              <div class="mt-4 p-4 bg-accent/50 border border-primary/10 rounded-md">
+                <div class="flex items-start gap-3">
+                  <fa-icon [icon]="['fas', 'circle-info']" class="text-primary w-4 h-4 mt-0.5" />
+                  <div>
+                    <p class="text-foreground text-sm font-medium mb-2">How to get started</p>
+                    <ol class="text-muted-foreground text-xs space-y-1.5 list-decimal list-inside">
+                      <li>Browse mentors and find someone who matches your goals</li>
+                      <li>Send a mentorship request — the mentor will review it</li>
+                      <li>Once accepted, your payment is held in escrow for protection</li>
+                      <li>Work with your mentor, and funds are released when the period completes</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
             }
           </div>
 
@@ -254,6 +269,28 @@ export class MenteeDashboardComponent implements OnDestroy {
         this.authApi.cancelMentorship(mentorshipId).pipe(takeUntil(this.destroy$)).subscribe({
           next: () => {
             this.store.dispatch(cancelMenteeSubscription());
+            // Notify mentor of cancellation
+            if (mentorship?.mentorId) {
+              this.authApi.createNotification({
+                userId: mentorship.mentorId,
+                type: 'mentorship_request',
+                title: 'Mentee cancelled subscription',
+                body: `A mentee has cancelled their subscription within the refund window.`,
+                metadata: { mentorshipId },
+              }).subscribe();
+            }
+            // Notify admins of refund request
+            this.authApi.getAllProfiles().pipe(take(1)).subscribe((profiles) => {
+              profiles.filter(p => p.role === 'admin').forEach(admin => {
+                this.authApi.createNotification({
+                  userId: admin.id,
+                  type: 'payment_updated',
+                  title: 'Refund requested',
+                  body: `A mentee has cancelled within the refund window. Please process the refund.`,
+                  metadata: { mentorshipId },
+                }).subscribe();
+              });
+            });
             this.toast.success('Subscription cancelled. You will receive a full refund. Your mentor has been informed.');
           },
           error: () => {

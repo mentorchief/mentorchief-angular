@@ -235,6 +235,12 @@ export interface MenteeReport {
   areasToDevelop?: string[];
   /** Recommendations for next steps or future mentors */
   recommendations?: string;
+  /** Report validation status (admin workflow) */
+  status?: 'pending_validation' | 'validated' | 'rejected';
+  /** Reason for rejection (if admin rejected the report) */
+  rejectionReason?: string;
+  /** Supabase UUID of the report row */
+  reportId?: string;
 }
 
 /** My Mentees (mentor) */

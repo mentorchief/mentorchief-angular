@@ -47,6 +47,10 @@ function profileRowToUser(row: ProfileRow): User {
     acceptingMentees: row.accepting_mentees ?? true,
     payoutAccount: (row.payout_account as unknown as User['payoutAccount']) ?? undefined,
     notificationSettings: (row.notification_settings as unknown as User['notificationSettings']) ?? undefined,
+    rejectionReason: (row as Record<string, unknown>)['rejection_reason'] as string ?? undefined,
+    featured: (row as Record<string, unknown>)['featured'] as boolean ?? false,
+    expertiseCategory: (row as Record<string, unknown>)['expertise_category'] as string ?? undefined,
+    deletedAt: (row as Record<string, unknown>)['deleted_at'] as string ?? undefined,
   };
 }
 
@@ -84,6 +88,14 @@ function userToProfileUpdate(
     (update as Record<string, unknown>)['accepting_mentees'] = user.acceptingMentees;
   if (user.payoutAccount !== undefined)
     (update as Record<string, unknown>)['payout_account'] = user.payoutAccount;
+  if (user.rejectionReason !== undefined)
+    (update as Record<string, unknown>)['rejection_reason'] = user.rejectionReason;
+  if (user.featured !== undefined)
+    (update as Record<string, unknown>)['featured'] = user.featured;
+  if (user.expertiseCategory !== undefined)
+    (update as Record<string, unknown>)['expertise_category'] = user.expertiseCategory;
+  if (user.deletedAt !== undefined)
+    (update as Record<string, unknown>)['deleted_at'] = user.deletedAt;
   return update;
 }
 
@@ -292,9 +304,11 @@ export class AuthApiService {
     );
   }
 
-  rejectMentor(userId: string): Observable<User | null> {
+  rejectMentor(userId: string, reason?: string): Observable<User | null> {
+    const updates: Record<string, unknown> = { mentor_approval_status: 'rejected' };
+    if (reason) updates['rejection_reason'] = reason;
     return this.assertRole(UserRole.Admin).pipe(
-      switchMap(() => this.updateProfileRow({ mentor_approval_status: 'rejected' }, userId)),
+      switchMap(() => this.updateProfileRow(updates, userId)),
       map(({ data, error }) => {
         if (error || !data) return null;
         return profileRowToUser(data);
@@ -424,6 +438,8 @@ export class AuthApiService {
           status: 'pending',
           goal,
           message,
+          plan_name: planName,
+          plan_amount: amount,
           progress: 0,
           months_active: 0,
           started_at: null,
@@ -462,7 +478,7 @@ export class AuthApiService {
     const db: any = this.supabase.client;
     return from(
       db.from('mentorships')
-        .select('id, mentor_id, mentee_id, status, goal, message, progress, months_active, started_at, completed_at, created_at, mentor_profile:profiles!mentorships_mentor_id_fkey(id, name, job_title, company, avatar), mentee_profile:profiles!mentorships_mentee_id_fkey(id, name, email, avatar)')
+        .select('id, mentor_id, mentee_id, status, goal, message, progress, months_active, plan_name, plan_amount, started_at, completed_at, created_at, mentor_profile:profiles!mentorships_mentor_id_fkey(id, name, job_title, company, avatar), mentee_profile:profiles!mentorships_mentee_id_fkey(id, name, email, avatar)')
         .or(`mentor_id.eq.${userId},mentee_id.eq.${userId}`)
         .order('created_at', { ascending: false }) as Promise<{ data: MentorshipWithProfiles[] | null; error: { message: string } | null }>,
     ).pipe(
@@ -646,29 +662,53 @@ export class AuthApiService {
     );
   }
 
-  sendMessage(conversationId: string, _ignoredSenderId: string, text: string): Observable<MessageRow> {
+  sendMessage(
+    conversationId: string,
+    _ignoredSenderId: string,
+    text: string,
+    attachmentUrl?: string,
+    attachmentType?: 'image' | 'pdf' | 'doc',
+  ): Observable<MessageRow> {
     const now = new Date().toISOString();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db: any = this.supabase.client;
     // Always derive sender_id from the authenticated session — never trust the caller-supplied value
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row: any = { conversation_id: conversationId, sender_id: null, text };
+    if (attachmentUrl) row.attachment_url = attachmentUrl;
+    if (attachmentType) row.attachment_type = attachmentType;
     return this.getCurrentUserId().pipe(
-      switchMap((callerId) =>
-        from(
+      switchMap((callerId) => {
+        row.sender_id = callerId;
+        return from(
           db.from('messages')
-            .insert({ conversation_id: conversationId, sender_id: callerId, text })
+            .insert(row)
             .select()
             .single() as Promise<{ data: MessageRow | null; error: { message: string } | null }>,
-        ),
-      ),
+        );
+      }),
       switchMap(({ data: msgData, error: msgError }) => {
         if (msgError || !msgData) {
           return throwError(() => new Error(msgError?.message ?? 'Failed to send message.'));
         }
+        const lastMsg = attachmentUrl ? (text || 'Sent an attachment') : text;
         return from(
           db.from('conversations')
-            .update({ last_message: text, last_timestamp: now })
+            .update({ last_message: lastMsg, last_timestamp: now })
             .eq('id', conversationId) as Promise<{ data: unknown; error: unknown }>,
         ).pipe(map(() => msgData));
+      }),
+    );
+  }
+
+  uploadAttachment(conversationId: string, file: File): Observable<string> {
+    const path = `${conversationId}/${Date.now()}_${file.name}`;
+    return from(
+      this.supabase.client.storage.from('attachments').upload(path, file),
+    ).pipe(
+      map(({ data, error }) => {
+        if (error) throw error;
+        return this.supabase.client.storage.from('attachments').getPublicUrl(data!.path).data.publicUrl;
       }),
     );
   }
@@ -759,6 +799,7 @@ export class AuthApiService {
           ...this.mapReportRows([r])[0],
           id: idx + 1,
           menteeName: r.mentee_profile?.name,
+          reportId: r.id,
         }));
       }),
     );
@@ -767,6 +808,7 @@ export class AuthApiService {
   private mapReportRows(data: MenteeReportRow[]): MenteeReport[] {
     return data.map((r, idx): MenteeReport => ({
       id: idx + 1,
+      reportId: r.id,
       menteeId: r.mentee_id,
       mentorId: r.mentor_id,
       mentorName: r.mentor_name,
@@ -778,6 +820,8 @@ export class AuthApiService {
       weaknesses: r.weaknesses,
       areasToDevelop: r.areas_to_develop,
       recommendations: r.recommendations,
+      status: (r as Record<string, unknown>)['status'] as MenteeReport['status'] ?? 'pending_validation',
+      rejectionReason: (r as Record<string, unknown>)['rejection_reason'] as string ?? undefined,
     }));
   }
 
@@ -1072,6 +1116,299 @@ export class AuthApiService {
           text: r.comment ?? '',
           submittedAt: r.submitted_at ?? undefined,
         }));
+      }),
+    );
+  }
+
+  // ─── Profile Photo Upload ──────────────────────────────────────────────────
+
+  uploadProfilePhoto(userId: string, file: File): Observable<string> {
+    const ext = file.name.split('.').pop() ?? 'jpg';
+    const path = `avatars/${userId}.${ext}`;
+    return from(
+      this.supabase.client.storage.from('avatars').upload(path, file, { upsert: true }),
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) throw new Error(error?.message ?? 'Failed to upload photo.');
+        const { data: urlData } = this.supabase.client.storage.from('avatars').getPublicUrl(path);
+        return urlData.publicUrl;
+      }),
+    );
+  }
+
+  // ─── Admin: Mentorship management ──────────────────────────────────────────
+
+  adminActivateMentorship(mentorshipId: string): Observable<MentorshipRow | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          db.from('mentorships')
+            .update({ status: 'active', started_at: new Date().toISOString() })
+            .eq('id', mentorshipId)
+            .select()
+            .single() as Promise<{ data: MentorshipRow | null; error: unknown }>,
+        ),
+      ),
+      map(({ data, error }) => {
+        if (error || !data) return null;
+        return data;
+      }),
+    );
+  }
+
+  adminCancelMentorship(mentorshipId: string): Observable<MentorshipRow | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          db.from('mentorships')
+            .update({ status: 'cancelled', completed_at: new Date().toISOString() })
+            .eq('id', mentorshipId)
+            .select()
+            .single() as Promise<{ data: MentorshipRow | null; error: unknown }>,
+        ),
+      ),
+      map(({ data, error }) => {
+        if (error || !data) return null;
+        return data;
+      }),
+    );
+  }
+
+  // ─── Admin: Payment management ─────────────────────────────────────────────
+
+  createPaymentRecord(payment: {
+    menteeId: string;
+    mentorId: string;
+    amount: number;
+    currency: string;
+    planName: string;
+    paymentReference?: string;
+    adminNotes?: string;
+  }): Observable<PaymentRow> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          db.from('payments')
+            .insert({
+              mentee_id: payment.menteeId,
+              mentor_id: payment.mentorId,
+              amount: payment.amount,
+              currency: payment.currency,
+              status: 'in_escrow',
+              plan_name: payment.planName,
+              payment_reference: payment.paymentReference ?? null,
+              admin_notes: payment.adminNotes ?? null,
+              paid_to_mentor: false,
+            })
+            .select()
+            .single() as Promise<{ data: PaymentRow | null; error: { message: string } | null }>,
+        ),
+      ),
+      map(({ data, error }) => {
+        if (error || !data) throw new Error(error?.message ?? 'Failed to create payment record.');
+        return data;
+      }),
+    );
+  }
+
+  refundPayment(paymentId: string): Observable<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          db.from('payments')
+            .update({ status: 'refunded' })
+            .eq('id', paymentId) as Promise<{ error: unknown }>,
+        ),
+      ),
+      map(({ error }) => {
+        if (error) throw error;
+      }),
+    );
+  }
+
+  // ─── Admin: Report Validation ──────────────────────────────────────────────
+
+  validateReport(reportId: string): Observable<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          db.from('mentee_reports')
+            .update({ status: 'validated' })
+            .eq('id', reportId) as Promise<{ error: unknown }>,
+        ),
+      ),
+      map(({ error }) => {
+        if (error) throw error;
+      }),
+    );
+  }
+
+  rejectReport(reportId: string, reason: string): Observable<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          db.from('mentee_reports')
+            .update({ status: 'rejected', rejection_reason: reason })
+            .eq('id', reportId) as Promise<{ error: unknown }>,
+        ),
+      ),
+      map(({ error }) => {
+        if (error) throw error;
+      }),
+    );
+  }
+
+  // ─── Admin: User soft delete ───────────────────────────────────────────────
+
+  softDeleteUser(userId: string): Observable<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() => {
+        const now = new Date().toISOString();
+        // Cancel all active mentorships
+        const cancelMentorships$ = from(
+          db.from('mentorships')
+            .update({ status: 'cancelled', completed_at: now })
+            .or(`mentee_id.eq.${userId},mentor_id.eq.${userId}`)
+            .in('status', ['pending', 'active']) as Promise<{ error: unknown }>,
+        );
+        // Cancel all active subscriptions
+        const cancelSubs$ = from(
+          db.from('subscriptions')
+            .update({ status: 'cancelled' })
+            .or(`mentee_id.eq.${userId},mentor_id.eq.${userId}`)
+            .eq('status', 'active') as Promise<{ error: unknown }>,
+        );
+        // Refund in_escrow payments
+        const refundPayments$ = from(
+          db.from('payments')
+            .update({ status: 'refunded' })
+            .or(`mentee_id.eq.${userId},mentor_id.eq.${userId}`)
+            .eq('status', 'in_escrow') as Promise<{ error: unknown }>,
+        );
+        // Soft-delete the profile
+        const deleteProfile$ = from(
+          db.from('profiles')
+            .update({ deleted_at: now, status: 'suspended' })
+            .eq('id', userId) as Promise<{ error: unknown }>,
+        );
+        return cancelMentorships$.pipe(
+          switchMap(() => cancelSubs$),
+          switchMap(() => refundPayments$),
+          switchMap(() => deleteProfile$),
+        );
+      }),
+      map(({ error }) => {
+        if (error) throw error;
+      }),
+    );
+  }
+
+  // ─── Expertise Categories ──────────────────────────────────────────────────
+
+  getExpertiseCategories(): Observable<{ id: string; name: string }[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return from(
+      db.from('expertise_categories')
+        .select('id, name')
+        .order('name') as Promise<{ data: { id: string; name: string }[] | null; error: unknown }>,
+    ).pipe(
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return data;
+      }),
+    );
+  }
+
+  createExpertiseCategory(name: string): Observable<{ id: string; name: string }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          db.from('expertise_categories')
+            .insert({ name })
+            .select()
+            .single() as Promise<{ data: { id: string; name: string } | null; error: { message: string } | null }>,
+        ),
+      ),
+      map(({ data, error }) => {
+        if (error || !data) throw new Error(error?.message ?? 'Failed to create category.');
+        return data;
+      }),
+    );
+  }
+
+  deleteExpertiseCategory(id: string): Observable<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          db.from('expertise_categories')
+            .delete()
+            .eq('id', id) as Promise<{ error: unknown }>,
+        ),
+      ),
+      map(({ error }) => {
+        if (error) throw error;
+      }),
+    );
+  }
+
+  // ─── Full Platform Config ──────────────────────────────────────────────────
+
+  getFullPlatformConfig(): Observable<Record<string, unknown> | null> {
+    return from(
+      (this.db.from('platform_config').select('*').eq('id', 1).maybeSingle()) as Promise<{ data: Record<string, unknown> | null; error: unknown }>,
+    ).pipe(
+      map(({ data }) => data),
+    );
+  }
+
+  saveFullPlatformConfig(config: Record<string, unknown>): Observable<void> {
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          (this.db.from('platform_config').upsert({ id: 1, ...config })) as Promise<{ error: unknown }>,
+        ),
+      ),
+      map(({ error }) => {
+        if (error) throw error;
+      }),
+    );
+  }
+
+  // ─── Admin: Get all mentorships ────────────────────────────────────────────
+
+  getAllMentorships(): Observable<MentorshipWithProfiles[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = this.supabase.client;
+    return this.assertRole(UserRole.Admin).pipe(
+      switchMap(() =>
+        from(
+          db.from('mentorships')
+            .select('*, mentor_profile:profiles!mentorships_mentor_id_fkey(id, name, email, avatar), mentee_profile:profiles!mentorships_mentee_id_fkey(id, name, email, avatar)')
+            .order('created_at', { ascending: false }) as Promise<{ data: MentorshipWithProfiles[] | null; error: unknown }>,
+        ),
+      ),
+      map(({ data, error }) => {
+        if (error || !data) return [];
+        return data;
       }),
     );
   }

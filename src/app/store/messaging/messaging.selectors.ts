@@ -70,6 +70,7 @@ export const selectSelectedConversation = createSelector(
     if (!id) return null;
     const c = entities[id];
     if (!c) return null;
+    console.log(c, userEntities[c.mentorId]?.name)
     return {
       ...c,
       mentorName: userEntities[c.mentorId]?.name ?? 'Unknown',

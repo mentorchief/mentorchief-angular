@@ -70,5 +70,13 @@ export interface User {
   payoutAccount?: { type: 'bank' | 'instapay'; bankName?: string; accountNumber?: string; instapayNumber?: string };
   /** Notification preferences — stored as JSON array in profiles table. */
   notificationSettings?: { id: string; enabled: boolean }[];
+  /** Rejection reason (set by admin when rejecting a mentor). */
+  rejectionReason?: string;
+  /** Whether mentor is featured on landing page (admin-set). */
+  featured?: boolean;
+  /** Primary expertise category (from admin-managed list). */
+  expertiseCategory?: string;
+  /** Soft-delete timestamp (null if not deleted). */
+  deletedAt?: string;
 }
 

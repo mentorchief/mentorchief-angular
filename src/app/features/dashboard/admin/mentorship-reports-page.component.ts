@@ -18,6 +18,8 @@ import type { MenteeReport, AdminPayment } from '../../../core/models/dashboard.
 
 const PAGE_SIZE = 5;
 
+type ReportStatus = 'pending_validation' | 'validated' | 'rejected';
+
 interface ReportWithMenteeName extends MenteeReport {
   menteeName: string;
 }
@@ -36,13 +38,25 @@ interface ReportWithPayment extends ReportWithMenteeName {
       <div class="mb-6">
         <h1 class="text-2xl lg:text-3xl font-semibold text-foreground">Mentorship Reports</h1>
         <p class="text-muted-foreground mt-1.5 text-sm">Reports submitted by mentors. Review and release payment once verified.</p>
-        <input
-          type="text"
-          [ngModel]="searchQuery"
-          (ngModelChange)="onSearchChange($event)"
-          placeholder="Search by mentor or mentee name..."
-          class="mt-4 w-full max-w-md px-4 py-2 bg-input-background border border-border rounded-md text-sm"
-        />
+        <div class="mt-4 flex flex-wrap gap-3">
+          <input
+            type="text"
+            [ngModel]="searchQuery"
+            (ngModelChange)="onSearchChange($event)"
+            placeholder="Search by mentor or mentee name..."
+            class="w-full max-w-md px-4 py-2 bg-input-background border border-border rounded-md text-sm"
+          />
+          <select
+            [ngModel]="statusFilter"
+            (ngModelChange)="onStatusFilterChange($event)"
+            class="px-4 py-2 bg-input-background border border-border rounded-md text-sm"
+          >
+            <option value="all">All Statuses</option>
+            <option value="pending_validation">Pending Validation</option>
+            <option value="validated">Validated</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
       </div>
 
       <!-- Table -->
@@ -55,6 +69,7 @@ interface ReportWithPayment extends ReportWithMenteeName {
                 <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Mentee</th>
                 <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Date</th>
                 <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Rating</th>
+                <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Status</th>
                 <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Payment</th>
                 <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Actions</th>
               </tr>
@@ -62,7 +77,7 @@ interface ReportWithPayment extends ReportWithMenteeName {
             <tbody>
               @if (reportsFiltered.length === 0) {
                 <tr>
-                  <td colspan="6" class="px-5 py-12 text-center text-muted-foreground text-sm">
+                  <td colspan="7" class="px-5 py-12 text-center text-muted-foreground text-sm">
                     No mentorship reports yet.
                   </td>
                 </tr>
@@ -93,6 +108,11 @@ interface ReportWithPayment extends ReportWithMenteeName {
                     }
                   </td>
                   <td class="px-5 py-4">
+                    <span [class]="getReportStatusClass(getReportStatus(report))" class="px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap">
+                      {{ getReportStatusLabel(getReportStatus(report)) }}
+                    </span>
+                  </td>
+                  <td class="px-5 py-4">
                     @if (report.payment) {
                       <div class="flex flex-col gap-1">
                         <span [class]="getPaymentStatusClass(report.payment.status)" class="px-2 py-0.5 rounded-md text-xs font-medium w-fit">
@@ -113,13 +133,29 @@ interface ReportWithPayment extends ReportWithMenteeName {
                       >
                         View Report
                       </button>
-                      @if (report.payment && report.payment.status === 'in_escrow') {
+                      @if (getReportStatus(report) === 'pending_validation') {
+                        <button
+                          (click)="onValidateReport(report)"
+                          [disabled]="validatingId === report.reportId"
+                          class="px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                        >
+                          {{ validatingId === report.reportId ? 'Validating...' : 'Validate' }}
+                        </button>
+                        <button
+                          (click)="openRejectDialog(report)"
+                          [disabled]="rejectingId === report.reportId"
+                          class="px-3 py-1.5 bg-destructive text-destructive-foreground text-xs rounded-md hover:bg-destructive/90 disabled:opacity-50 transition-colors whitespace-nowrap"
+                        >
+                          {{ rejectingId === report.reportId ? 'Rejecting...' : 'Reject' }}
+                        </button>
+                      }
+                      @if (report.payment && report.payment.status === 'in_escrow' && getReportStatus(report) === 'validated') {
                         <button
                           (click)="onReleasePayment(report)"
                           [disabled]="releasingId === report.payment.id"
                           class="px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors whitespace-nowrap"
                         >
-                          {{ releasingId === report.payment.id ? 'Releasing…' : 'Release Payment' }}
+                          {{ releasingId === report.payment.id ? 'Releasing...' : 'Release Payment' }}
                         </button>
                       }
                     </div>
@@ -150,7 +186,12 @@ interface ReportWithPayment extends ReportWithMenteeName {
           <div class="flex items-start justify-between px-6 py-5 border-b border-border sticky top-0 bg-card">
             <div>
               <h2 class="text-lg font-semibold text-foreground">{{ selectedReport.mentorName }} → {{ selectedReport.menteeName }}</h2>
-              <p class="text-sm text-muted-foreground mt-0.5">{{ formatDate(selectedReport.createdAt) }}</p>
+              <div class="flex items-center gap-2 mt-1">
+                <p class="text-sm text-muted-foreground">{{ formatDate(selectedReport.createdAt) }}</p>
+                <span [class]="getReportStatusClass(getReportStatus(selectedReport))" class="px-2 py-0.5 rounded-md text-xs font-medium">
+                  {{ getReportStatusLabel(getReportStatus(selectedReport)) }}
+                </span>
+              </div>
             </div>
             <div class="flex items-center gap-3">
               @if (selectedReport.rating != null) {
@@ -169,6 +210,14 @@ interface ReportWithPayment extends ReportWithMenteeName {
 
           <!-- Modal Body -->
           <div class="p-6 space-y-6">
+            <!-- Rejection Reason Banner -->
+            @if (getReportStatus(selectedReport) === 'rejected' && selectedReport.rejectionReason) {
+              <div class="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <h3 class="text-xs font-medium uppercase tracking-wider text-destructive mb-1">Rejection Reason</h3>
+                <p class="text-sm text-foreground leading-relaxed">{{ selectedReport.rejectionReason }}</p>
+              </div>
+            }
+
             <section>
               <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Summary</h3>
               <p class="text-sm text-foreground leading-relaxed whitespace-pre-line">{{ selectedReport.summary }}</p>
@@ -218,6 +267,29 @@ interface ReportWithPayment extends ReportWithMenteeName {
               </section>
             }
 
+            <!-- Validate / Reject actions in modal -->
+            @if (getReportStatus(selectedReport) === 'pending_validation') {
+              <section class="pt-5 border-t border-border">
+                <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Admin Actions</h3>
+                <div class="flex items-center gap-3">
+                  <button
+                    (click)="onValidateReport(selectedReport)"
+                    [disabled]="validatingId === selectedReport.reportId"
+                    class="px-4 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  >
+                    {{ validatingId === selectedReport.reportId ? 'Validating...' : 'Validate Report' }}
+                  </button>
+                  <button
+                    (click)="openRejectDialog(selectedReport)"
+                    [disabled]="rejectingId === selectedReport.reportId"
+                    class="px-4 py-1.5 bg-destructive text-destructive-foreground text-sm rounded-md hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+                  >
+                    {{ rejectingId === selectedReport.reportId ? 'Rejecting...' : 'Reject Report' }}
+                  </button>
+                </div>
+              </section>
+            }
+
             <!-- Payment section in modal -->
             @if (selectedReport.payment) {
               <section class="pt-5 border-t border-border">
@@ -231,7 +303,7 @@ interface ReportWithPayment extends ReportWithMenteeName {
                     <span [class]="getPaymentStatusClass(selectedReport.payment.status)" class="px-2.5 py-1 rounded-md text-xs font-medium">
                       {{ getPaymentStatusLabel(selectedReport.payment.status) }}
                     </span>
-                    @if (selectedReport.payment.status === 'in_escrow') {
+                    @if (selectedReport.payment.status === 'in_escrow' && getReportStatus(selectedReport) === 'validated') {
                       <button
                         (click)="onReleasePayment(selectedReport); closeReport()"
                         [disabled]="releasingId === selectedReport.payment.id"
@@ -244,6 +316,41 @@ interface ReportWithPayment extends ReportWithMenteeName {
                 </div>
               </section>
             }
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Rejection Reason Modal -->
+    @if (rejectDialogReport) {
+      <div class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" (click)="closeRejectDialog()">
+        <div class="bg-card rounded-xl border border-border shadow-xl w-full max-w-md" (click)="$event.stopPropagation()">
+          <div class="px-6 py-5 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Reject Report</h2>
+            <p class="text-sm text-muted-foreground mt-0.5">Provide a reason for rejecting this report. The mentor will be notified and asked to rewrite.</p>
+          </div>
+          <div class="p-6">
+            <textarea
+              [(ngModel)]="rejectionReason"
+              placeholder="Enter rejection reason..."
+              rows="4"
+              class="w-full px-4 py-2 bg-input-background border border-border rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+            ></textarea>
+            <div class="flex items-center justify-end gap-3 mt-4">
+              <button
+                (click)="closeRejectDialog()"
+                class="px-4 py-1.5 text-sm border border-border rounded-md hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                (click)="onConfirmReject()"
+                [disabled]="!rejectionReason.trim() || rejectingId === rejectDialogReport.reportId"
+                class="px-4 py-1.5 bg-destructive text-destructive-foreground text-sm rounded-md hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+              >
+                {{ rejectingId === rejectDialogReport.reportId ? 'Rejecting...' : 'Confirm Rejection' }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -263,10 +370,15 @@ export class AdminMentorshipReportsPageComponent implements OnInit, OnDestroy {
   reportsList: ReportWithMenteeName[] = [];
   paymentsList: AdminPayment[] = [];
   searchQuery = '';
+  statusFilter: 'all' | ReportStatus = 'all';
   readonly pageSize = PAGE_SIZE;
   currentPage = 1;
   releasingId: string | null = null;
+  validatingId: string | null = null;
+  rejectingId: string | null = null;
   selectedReport: ReportWithPayment | null = null;
+  rejectDialogReport: ReportWithPayment | null = null;
+  rejectionReason = '';
 
   ngOnInit(): void {
     this.store.select(selectMenteeReportsWithMenteeNames).pipe(takeUntil(this.destroy$)).subscribe((list) => {
@@ -295,15 +407,22 @@ export class AdminMentorshipReportsPageComponent implements OnInit, OnDestroy {
   }
 
   get reportsFiltered(): ReportWithPayment[] {
-    const list = this.reportsWithPayment;
+    let list = this.reportsWithPayment;
+    // Filter by status
+    if (this.statusFilter !== 'all') {
+      list = list.filter((r) => this.getReportStatus(r) === this.statusFilter);
+    }
+    // Filter by search query
     const q = this.searchQuery.toLowerCase().trim();
-    if (!q) return list;
-    return list.filter(
-      (r) =>
-        (r.mentorName && r.mentorName.toLowerCase().includes(q)) ||
-        (r.menteeName && r.menteeName.toLowerCase().includes(q)) ||
-        (r.summary && r.summary.toLowerCase().includes(q)),
-    );
+    if (q) {
+      list = list.filter(
+        (r) =>
+          (r.mentorName && r.mentorName.toLowerCase().includes(q)) ||
+          (r.menteeName && r.menteeName.toLowerCase().includes(q)) ||
+          (r.summary && r.summary.toLowerCase().includes(q)),
+      );
+    }
+    return list;
   }
 
   get reportsPaginated(): ReportWithPayment[] {
@@ -314,6 +433,12 @@ export class AdminMentorshipReportsPageComponent implements OnInit, OnDestroy {
 
   onSearchChange(value: string): void {
     this.searchQuery = value;
+    this.currentPage = 1;
+    this.cdr.markForCheck();
+  }
+
+  onStatusFilterChange(value: 'all' | ReportStatus): void {
+    this.statusFilter = value;
     this.currentPage = 1;
     this.cdr.markForCheck();
   }
@@ -331,6 +456,111 @@ export class AdminMentorshipReportsPageComponent implements OnInit, OnDestroy {
   closeReport(): void {
     this.selectedReport = null;
     this.cdr.markForCheck();
+  }
+
+  getReportStatus(report: ReportWithPayment): ReportStatus {
+    return report.status ?? 'pending_validation';
+  }
+
+  getReportStatusClass(status: ReportStatus): string {
+    switch (status) {
+      case 'pending_validation': return 'bg-amber-100 text-amber-700';
+      case 'validated': return 'bg-green-100 text-green-700';
+      case 'rejected': return 'bg-destructive/10 text-destructive';
+    }
+  }
+
+  getReportStatusLabel(status: ReportStatus): string {
+    switch (status) {
+      case 'pending_validation': return 'Pending Validation';
+      case 'validated': return 'Validated';
+      case 'rejected': return 'Rejected';
+    }
+  }
+
+  async onValidateReport(report: ReportWithPayment): Promise<void> {
+    if (!report.reportId) return;
+    const confirmed = await this.confirmDialog.confirm({
+      title: 'Validate Report',
+      message: `Validate this report from ${report.mentorName} for ${report.menteeName}? This will allow payment release.`,
+      confirmLabel: 'Yes, Validate',
+      cancelLabel: 'Cancel',
+      variant: 'primary',
+    });
+    if (!confirmed) return;
+
+    this.validatingId = report.reportId;
+    this.cdr.markForCheck();
+
+    this.authApi.validateReport(report.reportId).subscribe({
+      next: () => {
+        // Update local state
+        this.updateReportStatus(report, 'validated');
+        // Notify mentor
+        if (report.mentorId) {
+          this.authApi.createNotification({
+            userId: report.mentorId,
+            type: 'report_submitted',
+            title: 'Report validated',
+            body: 'Your report has been validated by admin.',
+          }).subscribe();
+        }
+        this.toast.success(`Report from ${report.mentorName} has been validated.`);
+        this.validatingId = null;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.toast.error('Failed to validate report. Please try again.');
+        this.validatingId = null;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  openRejectDialog(report: ReportWithPayment): void {
+    this.rejectDialogReport = report;
+    this.rejectionReason = '';
+    this.cdr.markForCheck();
+  }
+
+  closeRejectDialog(): void {
+    this.rejectDialogReport = null;
+    this.rejectionReason = '';
+    this.cdr.markForCheck();
+  }
+
+  onConfirmReject(): void {
+    const report = this.rejectDialogReport;
+    if (!report || !report.reportId || !this.rejectionReason.trim()) return;
+
+    const reason = this.rejectionReason.trim();
+    this.rejectingId = report.reportId;
+    this.cdr.markForCheck();
+
+    this.authApi.rejectReport(report.reportId, reason).subscribe({
+      next: () => {
+        // Update local state
+        this.updateReportStatus(report, 'rejected', reason);
+        // Notify mentor
+        if (report.mentorId) {
+          this.authApi.createNotification({
+            userId: report.mentorId,
+            type: 'report_submitted',
+            title: 'Report rejected',
+            body: `Your report was rejected. Reason: ${reason}. Please rewrite and resubmit.`,
+          }).subscribe();
+        }
+        this.toast.success(`Report from ${report.mentorName} has been rejected.`);
+        this.rejectingId = null;
+        this.closeRejectDialog();
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.toast.error('Failed to reject report. Please try again.');
+        this.rejectingId = null;
+        this.cdr.markForCheck();
+      },
+    });
   }
 
   async onReleasePayment(report: ReportWithPayment): Promise<void> {
@@ -395,6 +625,20 @@ export class AdminMentorshipReportsPageComponent implements OnInit, OnDestroy {
       return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     } catch {
       return iso;
+    }
+  }
+
+  /** Update a report's status in the local list so the UI reflects the change immediately */
+  private updateReportStatus(report: ReportWithPayment, status: ReportStatus, rejectionReason?: string): void {
+    this.reportsList = this.reportsList.map((r) => {
+      if (r.reportId === report.reportId) {
+        return { ...r, status, rejectionReason };
+      }
+      return r;
+    });
+    // Also update selectedReport if it's the same report
+    if (this.selectedReport?.reportId === report.reportId) {
+      this.selectedReport = { ...this.selectedReport, status, rejectionReason } as ReportWithPayment;
     }
   }
 }

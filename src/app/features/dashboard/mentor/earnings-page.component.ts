@@ -85,6 +85,17 @@ const PAGE_SIZE = 10;
         </div>
       }
 
+      <!-- Escrow hint -->
+      <div class="flex items-start gap-3 p-4 bg-accent/50 border border-primary/10 rounded-md mb-8">
+        <fa-icon [icon]="['fas', 'shield-halved']" class="text-primary w-4 h-4 mt-0.5" />
+        <div class="text-sm">
+          <p class="text-foreground font-medium mb-1">How you get paid</p>
+          <p class="text-muted-foreground text-xs">
+            When a mentee subscribes, their payment is held in escrow. Once the subscription period completes and you submit your mentee report, the funds are released to your payout account. Mentees can cancel within the first 3 days for a full refund.
+          </p>
+        </div>
+      </div>
+
       <!-- Earnings History (BE-driven) -->
       <div class="bg-card rounded-lg border border-border overflow-hidden">
         <div class="p-5 border-b border-border flex flex-wrap items-center justify-between gap-4">

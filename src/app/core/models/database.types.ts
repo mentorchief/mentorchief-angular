@@ -38,6 +38,10 @@ export interface Database {
           notification_settings: Json | null;
           join_date: string | null;
           experiences: Json | null;
+          rejection_reason: string | null;
+          featured: boolean | null;
+          expertise_category: string | null;
+          deleted_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -65,6 +69,8 @@ export interface Database {
           conversation_id: string;
           sender_id: string;
           text: string;
+          attachment_url: string | null;
+          attachment_type: string | null;
           created_at: string;
         };
         Insert: Omit<Database['public']['Tables']['messages']['Row'], 'created_at'>;
@@ -94,9 +100,11 @@ export interface Database {
           weaknesses: string[];
           areas_to_develop: string[];
           recommendations: string;
+          status: 'pending_validation' | 'validated' | 'rejected';
+          rejection_reason: string | null;
           created_at: string;
         };
-        Insert: Omit<Database['public']['Tables']['mentee_reports']['Row'], 'created_at'>;
+        Insert: Omit<Database['public']['Tables']['mentee_reports']['Row'], 'created_at' | 'status'> & { status?: string };
         Update: Partial<Database['public']['Tables']['mentee_reports']['Insert']>;
       };
 
@@ -176,10 +184,35 @@ export interface Database {
           min_subscription_price: number | null;
           max_subscription_price: number | null;
           maintenance_mode: boolean | null;
+          platform_name: string | null;
+          tagline: string | null;
+          logo_url: string | null;
+          admin_whatsapp: string | null;
+          refund_window_days: number | null;
+          mentor_capacity_limit: number | null;
+          payment_timeout_hours: number | null;
+          request_expiry_days: number | null;
+          report_deadline_days: number | null;
+          report_reminder_days: number | null;
+          max_attachment_size_mb: number | null;
+          reset_link_expiry_min: number | null;
+          reset_link_cooldown_min: number | null;
+          currency: string | null;
+          price_range_filters: { min: number; max: number; label: string }[] | null;
           updated_at: string;
         };
         Insert: Omit<Database['public']['Tables']['platform_config']['Row'], 'updated_at'>;
         Update: Partial<Database['public']['Tables']['platform_config']['Insert']>;
+      };
+
+      expertise_categories: {
+        Row: {
+          id: string;
+          name: string;
+          created_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['expertise_categories']['Row'], 'id' | 'created_at'>;
+        Update: Partial<Database['public']['Tables']['expertise_categories']['Insert']>;
       };
 
       mentorships: {
@@ -190,6 +223,8 @@ export interface Database {
           status: 'pending' | 'active' | 'completed' | 'cancelled';
           goal: string | null;
           message: string | null;
+          plan_name: string | null;
+          plan_amount: number | null;
           progress: number;
           months_active: number;
           started_at: string | null;

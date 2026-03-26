@@ -347,6 +347,22 @@ export class SessionEffects {
         ? (activeMentorship as unknown as { mentor_profile?: { name: string; job_title?: string; company?: string; avatar?: string } | null })['mentor_profile']
         : null;
 
+      const activeMentors = mentorships
+        .filter((m) => m.mentee_id === userId && m.status === 'active')
+        .map((m, idx) => {
+          const mp = (m as unknown as { mentor_profile?: { name: string; job_title?: string; company?: string; avatar?: string } | null })['mentor_profile'];
+          return {
+            id: idx + 1,
+            name: mp?.name ?? 'Unknown Mentor',
+            title: mp?.job_title ?? '',
+            company: mp?.company ?? '',
+            image: mp?.avatar ?? '',
+            startDate: m.started_at ? new Date(m.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-',
+            price: m.plan_amount ?? 0,
+            progress: m.progress ?? 0,
+          };
+        });
+
       const pastMentors = mentorships
         .filter((m) => m.mentee_id === userId && m.status === 'completed')
         .map((m, idx) => {
@@ -373,9 +389,18 @@ export class SessionEffects {
           monthsActive: activeMentorship.months_active ?? 0,
           progress: activeMentorship.progress ?? 0,
         } : null,
-        subscription: null,
+        subscription: activeMentorship ? {
+          planName: activeMentorship.plan_name ?? 'Monthly Mentorship',
+          amount: activeMentorship.plan_amount ?? 0,
+          currency: 'USD',
+          nextBillingDate: activeMentorship.started_at
+            ? new Date(new Date(activeMentorship.started_at).getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : '-',
+          status: 'active',
+          startedAt: activeMentorship.started_at ?? undefined,
+        } : null,
         payments: [],
-        myMentors: { active: [], past: pastMentors },
+        myMentors: { active: activeMentors, past: pastMentors },
       }));
       this.store.dispatch(resetMentor());
       this.store.dispatch(resetAdmin());

@@ -15,6 +15,7 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
 import { selectActiveMentorsAsMentor } from '../../../store/users/users.selectors';
 import { AuthApiService } from '../../../core/services/auth-api.service';
 
+
 @Component({
   selector: 'mc-mentor-profile-page',
   standalone: true,
@@ -41,17 +42,20 @@ import { AuthApiService } from '../../../core/services/auth-api.service';
                 <div class="flex-1">
                   <div class="flex items-start justify-between">
                     <div>
-                      <h1 class="text-2xl text-gray-900 font-bold">{{ mentor.name }}</h1>
+                      <div class="flex items-center gap-3">
+                        <h1 class="text-2xl text-gray-900 font-bold">{{ mentor.name }}</h1>
+                        <span
+                          [class]="mentor.acceptingMentees ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+                          class="px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1"
+                        >
+                          <span [class]="mentor.acceptingMentees ? 'bg-green-500' : 'bg-red-500'" class="w-1.5 h-1.5 rounded-full"></span>
+                          {{ mentor.acceptingMentees ? 'Accepting Mentees' : 'Not Accepting' }}
+                        </span>
+                      </div>
                       <p class="text-gray-500 mt-1">{{ mentor.title }} at {{ mentor.company }}</p>
                     </div>
-                    <span
-                      [class]="mentor.availability === 'Available' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'"
-                      class="px-3 py-1 rounded-md text-sm"
-                    >
-                      {{ mentor.availability }}
-                    </span>
                   </div>
-                  <div class="flex items-center gap-4 mt-4">
+                  <div class="flex items-center gap-4 mt-4 flex-wrap">
                     <div class="flex items-center gap-1.5">
                       @if ((reviewCount$ | async)! > 0) {
                         <fa-icon [icon]="['fas', 'star']" class="text-amber-400 w-4 h-4" />
@@ -61,8 +65,18 @@ import { AuthApiService } from '../../../core/services/auth-api.service';
                         <span class="text-gray-500 text-sm">No reviews yet</span>
                       }
                     </div>
-                    <div class="text-gray-500 text-sm">{{ mentor.sessions }} subscriptions</div>
-                    <div class="text-gray-500 text-sm">{{ mentor.yearsOfExperience }} years exp</div>
+                    <div class="text-gray-500 text-sm flex items-center gap-1.5">
+                      <fa-icon [icon]="['fas', 'users']" class="w-3.5 h-3.5" />
+                      {{ mentor.sessions }} mentorships
+                    </div>
+                    <div class="text-gray-500 text-sm flex items-center gap-1.5">
+                      <fa-icon [icon]="['fas', 'briefcase']" class="w-3.5 h-3.5" />
+                      {{ mentor.yearsOfExperience }} years exp
+                    </div>
+                    <div class="text-gray-500 text-sm flex items-center gap-1.5">
+                      <fa-icon [icon]="['fas', 'clock']" class="w-3.5 h-3.5" />
+                      Responds within 2 days
+                    </div>
                   </div>
                 </div>
               </div>
@@ -88,17 +102,32 @@ import { AuthApiService } from '../../../core/services/auth-api.service';
 
             <!-- Reviews -->
             <div class="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 class="text-lg text-gray-900 font-semibold mb-2">Reviews</h2>
-              <p class="text-sm text-gray-500 mb-4">Sample reviews</p>
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h2 class="text-lg text-gray-900 font-semibold">Reviews</h2>
+                  <p class="text-sm text-gray-500 mt-0.5">{{ (reviewCount$ | async) ?? 0 }} review{{ ((reviewCount$ | async) ?? 0) === 1 ? '' : 's' }} from mentees</p>
+                </div>
+                @if ((reviewCount$ | async)! > 0) {
+                  <div class="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-md">
+                    <fa-icon [icon]="['fas', 'star']" class="text-amber-400 w-4 h-4" />
+                    <span class="text-amber-700 font-semibold text-sm">{{ mentor.rating }}</span>
+                  </div>
+                }
+              </div>
               <div class="space-y-4">
-                @for (review of (profileReviews$ | async) ?? []; track review.name) {
+                @for (review of (displayedReviews$ | async) ?? []; track review.name) {
                   <div class="border-b border-gray-200 pb-4 last:border-0 last:pb-0">
                     <div class="flex items-center justify-between mb-2">
                       <div class="flex items-center gap-2">
                         <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
                           {{ getInitials(review.name) }}
                         </div>
-                        <span class="text-gray-900 text-sm font-medium">{{ review.name }}</span>
+                        <div>
+                          <span class="text-gray-900 text-sm font-medium">{{ review.name }}</span>
+                          @if (review.submittedAt) {
+                            <span class="text-gray-400 text-xs ml-2">{{ formatDate(review.submittedAt) }}</span>
+                          }
+                        </div>
                       </div>
                       <div class="flex items-center gap-1">
                         @for (star of getStars(review.rating); track $index) {
@@ -109,16 +138,20 @@ import { AuthApiService } from '../../../core/services/auth-api.service';
                     <p class="text-gray-600 text-sm">{{ review.text }}</p>
                   </div>
                 }
+                @if (((reviewCount$ | async) ?? 0) === 0) {
+                  <p class="text-gray-400 text-sm text-center py-4">No reviews yet. Be the first mentee to leave a review!</p>
+                }
               </div>
-              @if ((reviewCount$ | async) ?? 0 > sampleReviewsCount) {
-                <p class="mt-4 pt-4 border-t border-gray-200">
+              @if (((reviewCount$ | async) ?? 0) > sampleReviewsCount) {
+                <div class="mt-4 pt-4 border-t border-gray-200">
                   <a
                     [routerLink]="['/mentor', mentor.id, 'reviews']"
-                    class="text-indigo-600 hover:text-indigo-800 text-sm font-medium no-underline"
+                    class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-sm font-medium no-underline"
                   >
-                    See more ({{ reviewCount$ | async }} reviews) →
+                    View all {{ reviewCount$ | async }} reviews
+                    <fa-icon [icon]="['fas', 'chevron-right']" class="w-3 h-3" />
                   </a>
-                </p>
+                </div>
               }
             </div>
           </div>
@@ -128,13 +161,21 @@ import { AuthApiService } from '../../../core/services/auth-api.service';
             <!-- Pricing Card -->
             <div class="bg-white rounded-lg border border-gray-200 p-6 sticky top-24">
               @if (mentor.mentorPlans.length) {
-                <div class="text-center mb-6">
-                  <div class="text-lg text-gray-900 font-semibold mb-3">Plans</div>
-                  <div class="space-y-2">
+                <div class="mb-6">
+                  <div class="text-lg text-gray-900 font-semibold mb-3 text-center">Plans</div>
+                  <div class="space-y-3">
                     @for (plan of mentor.mentorPlans; track plan.id) {
-                      <div class="flex items-center justify-between px-3 py-2 rounded-md border border-gray-200">
-                        <span class="text-sm text-gray-700">{{ formatPlanDuration(plan.duration) }}</span>
-                        <span class="text-indigo-600 font-bold">\${{ plan.price }}</span>
+                      <div class="rounded-lg border border-gray-200 p-4 hover:border-indigo-300 transition-colors">
+                        <div class="flex items-center justify-between">
+                          <div>
+                            <div class="text-sm font-medium text-gray-900">{{ formatPlanDuration(plan.duration) }}</div>
+                            <div class="text-xs text-gray-500 mt-0.5">{{ getPlanDescription(plan.duration) }}</div>
+                          </div>
+                          <div class="text-right">
+                            <div class="text-lg text-indigo-600 font-bold">\${{ plan.price }}</div>
+                            <div class="text-xs text-gray-400">{{ getPlanPeriodLabel(plan.duration) }}</div>
+                          </div>
+                        </div>
                       </div>
                     }
                   </div>
@@ -163,18 +204,55 @@ import { AuthApiService } from '../../../core/services/auth-api.service';
 
               @if (user$ | async; as user) {
                 @if (user.role === UserRole.Mentee) {
-                  @if (hasPendingRequest) {
+                  @if (hasActiveMentorship) {
+                    <div class="w-full py-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-center font-medium flex items-center justify-center gap-2">
+                      <fa-icon [icon]="['fas', 'circle-check']" class="w-4 h-4" />
+                      Already your mentor
+                    </div>
+                    <a
+                      routerLink="/dashboard/mentee/messages"
+                      class="mt-3 w-full block text-center py-2.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors font-medium no-underline"
+                    >
+                      Message Mentor
+                    </a>
+                  } @else if (hasPendingRequest) {
                     <div class="space-y-3">
-                      <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-center">
-                        Request pending. You can cancel until the mentor responds.
+                      <div class="w-full py-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-md text-center font-medium flex items-center justify-center gap-2">
+                        <fa-icon [icon]="['fas', 'clock']" class="w-4 h-4" />
+                        Request Pending
+                      </div>
+                      <p class="text-xs text-amber-600 text-center">
+                        Your request is awaiting the mentor&apos;s response. You can cancel until they respond.
                       </p>
                       <button
                         (click)="onCancelRequest()"
-                        class="w-full py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors font-medium"
+                        class="w-full py-2.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium"
                       >
                         Cancel Request
                       </button>
                     </div>
+                  } @else if (!mentor.acceptingMentees) {
+                    <button
+                      disabled
+                      class="w-full py-3 bg-gray-100 text-gray-400 rounded-md font-medium cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <fa-icon [icon]="['fas', 'ban']" class="w-4 h-4" />
+                      Not Accepting Mentees
+                    </button>
+                    <p class="text-xs text-gray-500 text-center mt-2">
+                      This mentor is not accepting new mentees at the moment. Check back later.
+                    </p>
+                  } @else if (isAtCapacity) {
+                    <button
+                      disabled
+                      class="w-full py-3 bg-gray-100 text-gray-400 rounded-md font-medium cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <fa-icon [icon]="['fas', 'user-slash']" class="w-4 h-4" />
+                      At Capacity
+                    </button>
+                    <p class="text-xs text-gray-500 text-center mt-2">
+                      This mentor has reached their maximum number of mentees. Check back later.
+                    </p>
                   } @else {
                     <button
                       [routerLink]="['/mentor', mentor.id, 'request']"
@@ -186,11 +264,11 @@ import { AuthApiService } from '../../../core/services/auth-api.service';
                 } @else {
                   @if (user.role === UserRole.Mentor) {
                     <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                      You’re signed in as a mentor. Mentors can’t subscribe to other mentors. Switch to a mentee account if you want to request mentorship.
+                      You&apos;re signed in as a mentor. Mentors can&apos;t subscribe to other mentors. Switch to a mentee account if you want to request mentorship.
                     </div>
                   } @else {
                     <div class="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                      You’re signed in as an admin. Use the admin dashboard to manage mentorships instead of requesting a subscription.
+                      You&apos;re signed in as an admin. Use the admin dashboard to manage mentorships instead of requesting a subscription.
                     </div>
                   }
                 }
@@ -203,13 +281,32 @@ import { AuthApiService } from '../../../core/services/auth-api.service';
                   Sign in to request mentorship
                 </a>
                 <p class="text-xs text-muted-foreground text-center mt-2">
-                  You’ll need a mentee account to request a subscription with this mentor.
+                  You&apos;ll need a mentee account to request a subscription with this mentor.
                 </p>
               }
 
-              <p class="text-xs text-gray-500 text-center mt-4">
-                Your payment is protected by escrow until the mentorship period completes.
-              </p>
+              <!-- How it works hint -->
+              <div class="mt-5 pt-4 border-t border-gray-200">
+                <p class="text-xs font-medium text-gray-700 mb-2">How it works</p>
+                <div class="space-y-2">
+                  <div class="flex items-start gap-2 text-xs text-gray-500">
+                    <span class="shrink-0 w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold">1</span>
+                    <span>Send a request — the mentor reviews and accepts</span>
+                  </div>
+                  <div class="flex items-start gap-2 text-xs text-gray-500">
+                    <span class="shrink-0 w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold">2</span>
+                    <span>Your payment is held safely in escrow</span>
+                  </div>
+                  <div class="flex items-start gap-2 text-xs text-gray-500">
+                    <span class="shrink-0 w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold">3</span>
+                    <span>Work with your mentor throughout the subscription</span>
+                  </div>
+                  <div class="flex items-start gap-2 text-xs text-gray-500">
+                    <span class="shrink-0 w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold">4</span>
+                    <span>Funds are released to the mentor when the period ends</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -285,6 +382,8 @@ export class MentorProfilePageComponent implements OnInit {
   selectedPlan = 'monthly';
   requestMessage = '';
   hasPendingRequest = false;
+  hasActiveMentorship = false;
+  isAtCapacity = false;
   submittingRequest = false;
   private currentMentor: Mentor | null = null;
   private currentMentorshipId: string | null = null;
@@ -312,6 +411,7 @@ export class MentorProfilePageComponent implements OnInit {
     }),
   );
   readonly reviewCount$ = this.profileReviews$.pipe(map((reviews) => reviews.length));
+  readonly displayedReviews$ = this.profileReviews$.pipe(map((reviews) => reviews.slice(0, this.sampleReviewsCount)));
 
   private static readonly PLAN_DURATION_LABELS: Record<string, string> = {
     monthly: 'Monthly',
@@ -332,12 +432,26 @@ export class MentorProfilePageComponent implements OnInit {
   ngOnInit(): void {
     const mentorId = this.route.snapshot.paramMap.get('id');
     if (!mentorId) return;
+
+    // Check capacity (default 5, from platform config)
+    this.mentor$.pipe(take(1)).subscribe((mentor) => {
+      if (mentor) {
+        const defaultCap = 5;
+        this.isAtCapacity = mentor.sessions >= defaultCap;
+        this.cdr.markForCheck();
+      }
+    });
+
     this.store.select(selectAuthUser).pipe(take(1)).subscribe((user) => {
       if (!user || user.role !== UserRole.Mentee) return;
       this.authApi.getMentorshipForMenteeAndMentor(user.id, mentorId).subscribe({
         next: (mentorship) => {
           if (mentorship) {
-            this.hasPendingRequest = true;
+            if (mentorship.status === 'active') {
+              this.hasActiveMentorship = true;
+            } else if (mentorship.status === 'pending') {
+              this.hasPendingRequest = true;
+            }
             this.currentMentorshipId = mentorship.id;
           }
           this.cdr.markForCheck();
@@ -357,6 +471,33 @@ export class MentorProfilePageComponent implements OnInit {
 
   formatPlanDuration(duration: string): string {
     return MentorProfilePageComponent.PLAN_DURATION_LABELS[duration] ?? duration;
+  }
+
+  getPlanDescription(duration: string): string {
+    const descriptions: Record<string, string> = {
+      monthly: 'Billed every month',
+      quarterly: 'Billed every 3 months',
+      '6months': 'Billed every 6 months',
+    };
+    return descriptions[duration] ?? '';
+  }
+
+  getPlanPeriodLabel(duration: string): string {
+    const labels: Record<string, string> = {
+      monthly: '/month',
+      quarterly: '/quarter',
+      '6months': '/6 months',
+    };
+    return labels[duration] ?? '';
+  }
+
+  formatDate(dateStr: string): string {
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return '';
+    }
   }
 
   onSubmitRequest(): void {
@@ -381,6 +522,14 @@ export class MentorProfilePageComponent implements OnInit {
           this.currentMentorshipId = mentorship.id;
           this.submittingRequest = false;
           this.requestMessage = '';
+          // Notify mentor of new request
+          this.authApi.createNotification({
+            userId: mentor.id,
+            type: 'mentorship_request',
+            title: 'New mentorship request',
+            body: `${user.name} has requested ${planName} mentorship ($${amount}).`,
+            metadata: { mentorshipId: mentorship.id, menteeId: user.id, planName, amount },
+          }).subscribe();
           this.toast.success(`Mentorship request sent to ${mentor.name}! You'll be notified once they respond.`);
           this.cdr.markForCheck();
         },

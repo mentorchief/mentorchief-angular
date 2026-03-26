@@ -4,7 +4,8 @@ import { Router } from '@angular/router';
 import { Store } from '@ngrx/store';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { ToastService } from '../../../shared/services/toast.service';
-import { take } from 'rxjs';
+import { AuthApiService } from '../../../core/services/auth-api.service';
+import { catchError, of, take } from 'rxjs';
 import type { AppState } from '../../../store/app.state';
 import { selectRegistrationData } from '../store/registration.selectors';
 import { selectAuthUser } from '../../auth/store/auth.selectors';
@@ -181,9 +182,22 @@ import { ROUTES } from '../../../core/routes';
                 <fa-icon [icon]="['fas', 'users']" class="text-primary w-4 h-4" />
                 <div>
                   <p class="text-sm font-medium text-foreground">Mentee Capacity</p>
-                  <p class="text-sm text-muted-foreground">{{ data.menteeCapacity }}</p>
+                  <p class="text-sm text-muted-foreground">{{ data.menteeCapacity }} mentees (set by admin)</p>
                 </div>
               </div>
+              @if (data.payoutAccount) {
+                <div class="flex items-start gap-3">
+                  <fa-icon [icon]="['fas', 'wallet']" class="text-primary w-4 h-4" />
+                  <div>
+                    <p class="text-sm font-medium text-foreground">Payout Account</p>
+                    @if (data.payoutAccount.type === 'bank') {
+                      <p class="text-sm text-muted-foreground">Bank: {{ data.payoutAccount.bankName }} (ending {{ data.payoutAccount.accountNumber?.slice(-4) }})</p>
+                    } @else {
+                      <p class="text-sm text-muted-foreground">Instapay: {{ data.payoutAccount.instapayNumber }}</p>
+                    }
+                  </div>
+                </div>
+              }
               <div class="flex items-start gap-3">
                 <fa-icon [icon]="['fas', 'calendar']" class="text-primary w-4 h-4" />
                 <div>
@@ -241,6 +255,7 @@ export class PreviewPageComponent {
   private readonly store = inject(Store<AppState>);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
+  private readonly authApi = inject(AuthApiService);
 
   data: RegistrationData = {
     role: null,
@@ -258,10 +273,12 @@ export class PreviewPageComponent {
     skills: [],
     tools: [],
     portfolioUrl: '',
+    expertiseCategory: '',
     subscriptionCost: '',
     mentorPlans: [],
     availability: [],
     menteeCapacity: '',
+    payoutAccount: null,
   };
 
   user: User | null = null;
@@ -337,7 +354,10 @@ export class PreviewPageComponent {
       profile['mentorPlans'] = this.data.mentorPlans.length ? this.data.mentorPlans : undefined;
       profile['availability'] = this.data.availability.length ? this.data.availability : undefined;
       profile['menteeCapacity'] = this.data.menteeCapacity || undefined;
+      profile['expertiseCategory'] = this.data.expertiseCategory || undefined;
+      profile['payoutAccount'] = this.data.payoutAccount || undefined;
       profile['mentorApprovalStatus'] = 'pending';
+      profile['rejectionReason'] = null; // Clear rejection reason on reapply
     }
 
     this.store.dispatch(markRegistered({ updates: profile as Partial<User> }));
@@ -345,5 +365,37 @@ export class PreviewPageComponent {
     this.store.dispatch(resetData());
     this.toast.success('Registration complete! Welcome to Mentorchief.');
     this.isSubmitting = false;
+
+    // Notify all admins about the new registration
+    this.notifyAdminsOfRegistration(fullName, this.data.role);
+  }
+
+  private notifyAdminsOfRegistration(userName: string, role: UserRole | null): void {
+    this.authApi.getAllProfiles().pipe(
+      catchError(() => of([])),
+    ).subscribe((allUsers) => {
+      const admins = allUsers.filter((u) => u.role === UserRole.Admin);
+      const isMentor = role === UserRole.Mentor;
+
+      admins.forEach((admin) => {
+        // New user registered notification
+        this.authApi.createNotification({
+          userId: admin.id,
+          type: 'account_updated',
+          title: 'New user registered',
+          body: `${userName} has registered as a ${isMentor ? 'mentor' : 'mentee'}.`,
+        }).pipe(catchError(() => of(null))).subscribe();
+
+        // Additional notification for mentor applications
+        if (isMentor) {
+          this.authApi.createNotification({
+            userId: admin.id,
+            type: 'mentorship_request',
+            title: 'New mentor application',
+            body: `${userName} has applied to become a mentor and is awaiting your review.`,
+          }).pipe(catchError(() => of(null))).subscribe();
+        }
+      });
+    });
   }
 }

@@ -21,6 +21,8 @@ export function userToMentor(u: User): Mentor {
     responseTime: '',
     yearsOfExperience: parseInt(u.yearsOfExperience ?? '0', 10) || 0,
     mentorPlans: u.mentorPlans ?? [],
+    acceptingMentees: u.acceptingMentees !== false,
+    featured: u.featured === true,
   };
 }
 
@@ -64,3 +66,9 @@ export const selectPlatformUsers = selectAllUsers;
 export const selectActiveMentorsAsMentor = createSelector(selectActiveMentors, (mentors) =>
   mentors.map(userToMentor),
 );
+
+/** Featured mentors (admin-selected) with fallback to first 3 approved mentors. */
+export const selectFeaturedMentorsAsMentor = createSelector(selectActiveMentorsAsMentor, (mentors) => {
+  const featured = mentors.filter((m) => m.featured);
+  return featured.length > 0 ? featured : mentors.slice(0, 3);
+});

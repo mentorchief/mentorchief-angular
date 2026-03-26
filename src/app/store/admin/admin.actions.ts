@@ -21,6 +21,16 @@ export const releasePayment = createAction(
   props<{ paymentId: string }>(),
 );
 
+export const refundPayment = createAction(
+  '[Admin] Refund Payment',
+  props<{ paymentId: string }>(),
+);
+
+export const addPayment = createAction(
+  '[Admin] Add Payment',
+  props<{ payment: AdminPayment }>(),
+);
+
 export const loadAdminData = createAction('[Admin] Load Data', props<{
   stats: AdminStat[];
   pendingActions: PendingAction[];

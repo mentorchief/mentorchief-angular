@@ -106,6 +106,23 @@ import { AuthApiService } from '../../core/services/auth-api.service';
 
         <!-- Sidebar -->
         <div class="space-y-6">
+          <!-- How it works hint -->
+          <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <div class="flex items-start gap-3">
+              <fa-icon [icon]="['fas', 'circle-info']" class="text-indigo-500 w-4 h-4 mt-0.5" />
+              <div>
+                <p class="text-gray-900 text-sm font-medium mb-2">How the mentorship cycle works</p>
+                <ol class="text-gray-500 text-xs space-y-1.5 list-decimal list-inside">
+                  <li>A mentee sends you a mentorship request</li>
+                  <li>Review and accept or decline the request</li>
+                  <li>Once accepted, their payment is held in escrow</li>
+                  <li>Guide your mentee throughout the subscription period</li>
+                  <li>When the period ends, submit a report and funds are released to you</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+
           <!-- Quick Actions -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <h3 class="text-gray-900 font-medium mb-4">Quick Actions</h3>
@@ -172,6 +189,16 @@ export class MentorDashboardComponent {
             request: { id: item.id, name: item.name, goal: item.goalOrPlan, message: item.detail, rating: item.rating },
           }));
           this.createConversationForMentee(item);
+          // Notify mentee that mentor accepted
+          if (item.menteeUuid) {
+            this.authApi.createNotification({
+              userId: item.menteeUuid,
+              type: 'mentorship_request',
+              title: 'Mentorship request accepted!',
+              body: `Your mentor has accepted your request. Please contact the admin via WhatsApp to arrange payment.`,
+              metadata: { mentorshipId: item.mentorshipId },
+            }).subscribe();
+          }
           this.toast.success(`${item.name} has been added to your mentees.`);
         },
         error: () => { this.toast.error('Failed to accept request. Please try again.'); },
@@ -225,6 +252,16 @@ export class MentorDashboardComponent {
       this.authApi.declineMentorship(item.mentorshipId).subscribe({
         next: () => {
           this.store.dispatch(declineMentorshipRequest({ requestId: item.id }));
+          // Notify mentee that mentor declined
+          if (item.menteeUuid) {
+            this.authApi.createNotification({
+              userId: item.menteeUuid,
+              type: 'mentorship_request',
+              title: 'Mentorship request declined',
+              body: `Unfortunately, the mentor has declined your request. You can browse other mentors and try again.`,
+              metadata: { mentorshipId: item.mentorshipId },
+            }).subscribe();
+          }
           this.toast.success(`Request from ${item.name} has been declined.`);
         },
         error: () => { this.toast.error('Failed to decline request. Please try again.'); },

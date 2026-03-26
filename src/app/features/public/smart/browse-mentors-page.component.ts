@@ -30,9 +30,9 @@ const MENTORS_PAGE_SIZE = 9;
       <!-- Filters -->
       <div class="bg-card rounded-lg border border-border p-5 sm:p-6 mb-8">
         <h2 class="text-sm font-medium text-foreground mb-4">Refine your search</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <!-- Search -->
-          <div class="lg:col-span-1">
+          <div>
             <label for="browse-search" class="block text-sm font-medium text-muted-foreground mb-1.5">Search</label>
             <input
               id="browse-search"
@@ -74,6 +74,22 @@ const MENTORS_PAGE_SIZE = 9;
               <option value="100-150">$100 – $150</option>
               <option value="150-200">$150 – $200</option>
               <option value="200+">Over $200</option>
+            </select>
+          </div>
+
+          <!-- Sort -->
+          <div>
+            <label for="browse-sort" class="block text-sm font-medium text-muted-foreground mb-1.5">Sort by</label>
+            <select
+              id="browse-sort"
+              [(ngModel)]="sortOption"
+              (ngModelChange)="filterMentors()"
+              class="w-full px-4 py-2.5 bg-input-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-primary transition-colors"
+            >
+              <option value="latest">Latest</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+              <option value="rating-desc">Highest Rated</option>
             </select>
           </div>
         </div>
@@ -149,6 +165,7 @@ export class BrowseMentorsPageComponent implements OnInit, OnDestroy {
   searchQuery = '';
   selectedCategory = 'All';
   priceRange = 'all';
+  sortOption = 'latest';
 
   filteredMentors: Mentor[] = [];
 
@@ -201,6 +218,20 @@ export class BrowseMentorsPageComponent implements OnInit, OnDestroy {
       }
     }
 
+    // Apply sorting
+    switch (this.sortOption) {
+      case 'price-asc':
+        result.sort((a, b) => a.price - b.price);
+        break;
+      case 'price-desc':
+        result.sort((a, b) => b.price - a.price);
+        break;
+      case 'rating-desc':
+        result.sort((a, b) => b.rating - a.rating);
+        break;
+      // 'latest' keeps the default order (newest first from store)
+    }
+
     this.filteredMentors = result;
     this.mentorsPage = 1;
     this.cdr.markForCheck();
@@ -210,6 +241,7 @@ export class BrowseMentorsPageComponent implements OnInit, OnDestroy {
     this.searchQuery = '';
     this.selectedCategory = 'All';
     this.priceRange = 'all';
+    this.sortOption = 'latest';
     this.filteredMentors = [...this.allMentors];
     this.mentorsPage = 1;
     this.cdr.markForCheck();

@@ -42,13 +42,25 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
         <div class="bg-card rounded-lg border border-border p-6 mb-6">
           <h2 class="text-lg text-foreground font-medium mb-5">Personal Information</h2>
           <div class="flex items-start gap-6 mb-6">
-            @if (isAvatarUrl(user.avatar)) {
-              <img [src]="user.avatar" [alt]="user.name" class="w-20 h-20 rounded-lg object-cover shrink-0" />
-            } @else {
-              <div class="w-20 h-20 bg-primary rounded-lg flex items-center justify-center shrink-0">
-                <span class="text-primary-foreground text-2xl font-semibold">{{ getInitials(user.name) }}</span>
-              </div>
-            }
+            <div class="shrink-0">
+              @if (avatarPreview) {
+                <img [src]="avatarPreview" [alt]="user.name" class="w-20 h-20 rounded-lg object-cover" />
+              } @else if (isAvatarUrl(user.avatar)) {
+                <img [src]="user.avatar" [alt]="user.name" class="w-20 h-20 rounded-lg object-cover" />
+              } @else {
+                <div class="w-20 h-20 bg-primary rounded-lg flex items-center justify-center">
+                  <span class="text-primary-foreground text-2xl font-semibold">{{ getInitials(user.name) }}</span>
+                </div>
+              }
+              <label
+                class="block mt-2 text-center text-xs text-primary cursor-pointer hover:underline">
+                {{ avatarUploading ? 'Uploading...' : 'Change photo' }}
+                <input type="file" accept="image/jpeg,image/png" (change)="onAvatarSelected($event)" class="hidden" [disabled]="avatarUploading" />
+              </label>
+              @if (avatarError) {
+                <p class="text-xs text-destructive mt-1">{{ avatarError }}</p>
+              }
+            </div>
             <div class="flex-1 grid sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-foreground mb-1.5">Full Name</label>
@@ -299,19 +311,14 @@ import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.se
               }
             </div>
 
-            <!-- Capacity -->
+            <!-- Capacity (read-only, set by admin) -->
             <div class="grid sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm font-medium text-foreground mb-1.5">Mentee Capacity</label>
-                <select [(ngModel)]="form.menteeCapacity"
-                  class="w-full px-4 py-2.5 bg-input-background border border-border rounded-md">
-                  <option value="">Select capacity</option>
-                  <option value="1">1 mentee at a time</option>
-                  <option value="2-3">2-3 mentees at a time</option>
-                  <option value="4-5">4-5 mentees at a time</option>
-                  <option value="6-10">6-10 mentees at a time</option>
-                  <option value="10+">10+ mentees at a time</option>
-                </select>
+                <div class="w-full px-4 py-2.5 bg-muted border border-border rounded-md text-foreground">
+                  {{ mentorCapacity$ | async }} mentees at a time
+                </div>
+                <p class="text-xs text-muted-foreground mt-1">Capacity is set by the platform administrator</p>
               </div>
               <div class="flex items-end pb-0.5">
                 <p class="text-sm text-muted-foreground">
@@ -473,6 +480,10 @@ export class MentorSettingsPageComponent implements OnInit, OnDestroy {
 
   skillInput = '';
   toolInput = '';
+  avatarPreview: string | null = null;
+  avatarError = '';
+  avatarUploading = false;
+  private currentUserId: string | null = null;
   payoutDialogOpen = false;
 
   payoutForm: FormGroup = this.fb.group({
@@ -484,6 +495,7 @@ export class MentorSettingsPageComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.user$.pipe(filter((u): u is User => u != null), take(1)).subscribe((user) => {
+      this.currentUserId = user.id;
       this.form = {
         name: user.name ?? '',
         phone: user.phone ?? '',
@@ -592,6 +604,47 @@ export class MentorSettingsPageComponent implements OnInit, OnDestroy {
     }
   }
 
+  // ── Avatar upload ────────────────────────────────────────────────
+  onAvatarSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    this.avatarError = '';
+
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      this.avatarError = 'Only JPG and PNG files are allowed.';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      this.avatarError = 'File must be under 10 MB.';
+      return;
+    }
+    if (!this.currentUserId) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.avatarPreview = reader.result as string;
+      this.cdr.markForCheck();
+    };
+    reader.readAsDataURL(file);
+
+    this.avatarUploading = true;
+    this.authApi.uploadProfilePhoto(this.currentUserId, file).pipe(take(1)).subscribe({
+      next: (url) => {
+        this.store.dispatch(updateProfile({ updates: { avatar: url } }));
+        this.avatarUploading = false;
+        this.toast.success('Profile photo updated.');
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.avatarError = 'Upload failed. Please try again.';
+        this.avatarUploading = false;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
   // ── Save handlers ─────────────────────────────────────────────────
   onSavePersonal(): void {
     this.store.dispatch(updateProfile({
@@ -624,7 +677,6 @@ export class MentorSettingsPageComponent implements OnInit, OnDestroy {
     this.store.dispatch(updateProfile({
       updates: {
         mentorPlans: this.form.mentorPlans,
-        menteeCapacity: this.form.menteeCapacity,
         subscriptionCost: primaryPlan?.price ?? undefined,
       },
     }));

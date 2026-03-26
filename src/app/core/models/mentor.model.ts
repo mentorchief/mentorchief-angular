@@ -16,5 +16,7 @@ export interface Mentor {
   responseTime: string;
   yearsOfExperience: number;
   mentorPlans: MentorPlan[];
+  acceptingMentees: boolean;
+  featured: boolean;
 }
 

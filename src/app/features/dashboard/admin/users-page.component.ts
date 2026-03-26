@@ -9,7 +9,7 @@ import { ToastService } from '../../../shared/services/toast.service';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 import type { AppState } from '../../../store/app.state';
 import { selectPlatformUsers } from '../store/dashboard.selectors';
-import { updateUserStatus } from '../store/dashboard.actions';
+import { updateUserStatus, updateUserProfile } from '../store/dashboard.actions';
 import { UserRole, MentorApprovalStatus, type User } from '../../../core/models/user.model';
 import { AuthApiService } from '../../../core/services/auth-api.service';
 
@@ -129,6 +129,18 @@ const PAGE_SIZE = 10;
                           WhatsApp
                         </a>
                       }
+                      @if (user.role === 'mentor' && user.mentorApprovalStatus === 'approved' && user.status !== 'suspended') {
+                        <button
+                          (click)="onToggleFeatured(user)"
+                          class="px-3 py-1.5 border rounded-md text-sm transition-colors"
+                          [class]="user.featured
+                            ? 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                            : 'border-gray-300 text-gray-500 hover:bg-gray-50'"
+                          [title]="user.featured ? 'Remove from featured' : 'Feature on landing page'"
+                        >
+                          {{ user.featured ? '\u2605 Featured' : '\u2606 Feature' }}
+                        </button>
+                      }
                       <button
                         (click)="onToggleSuspend(user)"
                         class="px-3 py-1.5 border rounded-md text-sm hover:opacity-90"
@@ -138,6 +150,14 @@ const PAGE_SIZE = 10;
                       >
                         {{ user.status === 'suspended' ? 'Activate' : 'Suspend' }}
                       </button>
+                      @if (user.role !== 'admin') {
+                        <button
+                          (click)="onDeleteUser(user)"
+                          class="px-3 py-1.5 border border-red-600 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 hover:border-red-700 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      }
                     </div>
                   </td>
                 </tr>
@@ -269,6 +289,27 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
   }
 
 
+  async onDeleteUser(user: User): Promise<void> {
+    const confirmed = await this.confirmDialog.confirm({
+      title: 'Delete User',
+      message: `This will permanently deactivate ${user.name}, cancel all their active mentorships, and refund any payments in escrow. This cannot be undone.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+    this.authApi.softDeleteUser(user.id).subscribe({
+      next: () => {
+        this.usersList = this.usersList.filter((u) => u.id !== user.id);
+        this.toast.success(`${user.name} has been deleted.`);
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.toast.error(`Failed to delete ${user.name}. Please try again.`);
+      },
+    });
+  }
+
   async onToggleSuspend(user: User): Promise<void> {
     const isSuspending = user.status !== 'suspended';
     const confirmed = await this.confirmDialog.confirm({
@@ -285,11 +326,36 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
     this.authApi.updateUserStatus(user.id, newStatus).subscribe({
       next: () => {
         this.store.dispatch(updateUserStatus({ userId: user.id, status: newStatus }));
+        // Notify user of status change
+        this.authApi.createNotification({
+          userId: user.id,
+          type: 'account_updated',
+          title: isSuspending ? 'Account suspended' : 'Account reactivated',
+          body: isSuspending
+            ? 'Your account has been suspended by an administrator.'
+            : 'Your account has been reactivated. Welcome back!',
+        }).subscribe();
         this.toast.success(isSuspending ? `${user.name} has been suspended.` : `${user.name} has been activated.`);
         this.cdr.markForCheck();
       },
       error: () => {
         this.toast.error(`Failed to ${isSuspending ? 'suspend' : 'activate'} ${user.name}. Please try again.`);
+      },
+    });
+  }
+
+  onToggleFeatured(user: User): void {
+    const newFeatured = !user.featured;
+    this.authApi.updateProfile({ featured: newFeatured }).subscribe({
+      next: () => {
+        this.store.dispatch(updateUserProfile({ userId: user.id, updates: { featured: newFeatured } }));
+        this.toast.success(newFeatured
+          ? `${user.name} is now featured on the landing page.`
+          : `${user.name} has been removed from featured mentors.`);
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.toast.error(`Failed to update featured status for ${user.name}. Please try again.`);
       },
     });
   }

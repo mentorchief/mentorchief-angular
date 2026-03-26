@@ -7,7 +7,7 @@ import type { AppState } from '../../store/app.state';
 import { selectAuthUser } from '../auth/store/auth.selectors';
 import {
   selectAdminStatsComputed,
-  selectAdminRecentActivities,
+  selectAdminRecentActivitiesComputed,
 } from './store/dashboard.selectors';
 import type { User } from '../../core/models/user.model';
 
@@ -104,5 +104,5 @@ export class AdminDashboardComponent {
   private readonly store = inject(Store<AppState>);
   readonly user$ = this.store.select(selectAuthUser);
   readonly adminStats$ = this.store.select(selectAdminStatsComputed);
-  readonly recentActivities$ = this.store.select(selectAdminRecentActivities);
+  readonly recentActivities$ = this.store.select(selectAdminRecentActivitiesComputed);
 }
