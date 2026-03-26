@@ -1,24 +1,12 @@
-import { inject, Injectable } from '@angular/core';
-import { Store } from '@ngrx/store';
-import { firstValueFrom } from 'rxjs';
-import type { AppState } from '../../store/app.state';
-import { loadCurrentUser, loadCurrentUserSuccess } from '../../features/auth/store/auth.actions';
-import { AuthApiService } from './auth-api.service';
+import { Injectable, inject } from '@angular/core';
+import { AuthService } from './auth.service';
 
-@Injectable({
-  providedIn: 'root',
-})
+@Injectable({ providedIn: 'root' })
 export class AppInitializerService {
-  private readonly store = inject(Store<AppState>);
-  private readonly authApi = inject(AuthApiService);
+  private readonly authService = inject(AuthService);
 
-  async initializeApp(): Promise<void> {
-    try {
-      const userId = await firstValueFrom(this.authApi.loadCurrentUser());
-      this.store.dispatch(loadCurrentUserSuccess({ userId }));
-    } catch {
-      this.store.dispatch(loadCurrentUserSuccess({ userId: null }));
-    }
+  initializeApp(): void {
+    this.authService.initialize();
   }
 }
 

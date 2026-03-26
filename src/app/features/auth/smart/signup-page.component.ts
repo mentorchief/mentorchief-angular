@@ -1,19 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { Store } from '@ngrx/store';
-import { Observable, take } from 'rxjs';
-import type { AppState } from '../../../store/app.state';
-import {
-  selectAuthError,
-  selectAuthLoading,
-  selectIsAuthenticated,
-  selectAuthUser,
-} from '../store/auth.selectors';
-import { signup } from '../store/auth.actions';
+import { AuthService } from '../../../core/services/auth.service';
 import type { SignupFormValue } from '../ui/signup-form.component';
 import { SignupFormComponent } from '../ui/signup-form.component';
-import { MentorApprovalStatus, UserRole } from '../../../core/models/user.model';
+import { UserRole } from '../../../core/models/user.model';
 import { ROUTES } from '../../../core/routes';
 
 @Component({
@@ -33,8 +24,8 @@ import { ROUTES } from '../../../core/routes';
 
         <mc-signup-form
           [value]="formValue"
-          [loading]="(loading$ | async) ?? false"
-          [error]="(error$ | async) ?? null"
+          [loading]="(auth.loading$ | async) ?? false"
+          [error]="(auth.error$ | async) ?? null"
           (valueChange)="onFormValueChange($event)"
           (submitted)="onSubmitted($event)"
         />
@@ -44,35 +35,17 @@ import { ROUTES } from '../../../core/routes';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SignupPageComponent implements OnInit {
-  private readonly store = inject(Store<AppState>);
+  readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 
-  readonly loading$: Observable<boolean> = this.store.select(selectAuthLoading);
-  readonly error$: Observable<string | null> = this.store.select(selectAuthError);
-  private readonly isAuthenticated$ = this.store.select(selectIsAuthenticated);
-  private readonly user$ = this.store.select(selectAuthUser);
-
-  formValue: SignupFormValue = {
-    name: '',
-    email: '',
-    password: '',
-    agreed: false,
-  };
+  formValue: SignupFormValue = { name: '', email: '', password: '', agreed: false };
 
   ngOnInit(): void {
-    this.isAuthenticated$.pipe(take(1)).subscribe((isAuth) => {
-      if (isAuth) {
-        this.user$.pipe(take(1)).subscribe((user) => {
-          if (user) {
-            if (!user.registered) {
-              void this.router.navigate([ROUTES.registration.roleInfo]);
-            } else {
-              this.redirectToDashboard(user);
-            }
-          }
-        });
-      }
-    });
+    const user = this.auth.currentUser;
+    if (user) {
+      if (!user.registered) void this.router.navigate([ROUTES.registration.roleInfo]);
+      else this.auth['redirectAfterLogin'](user);
+    }
   }
 
   onFormValueChange(value: SignupFormValue): void {
@@ -80,28 +53,14 @@ export class SignupPageComponent implements OnInit {
   }
 
   onSubmitted(value: SignupFormValue): void {
-    this.store.dispatch(
-      signup({
-        payload: {
-          name: value.name.trim(),
-          email: value.email.trim(),
-          password: value.password,
-          role: UserRole.Mentee,
-        },
-      }),
-    );
-  }
-
-  private redirectToDashboard(user: { role: UserRole; mentorApprovalStatus?: MentorApprovalStatus }): void {
-    if (user.role === UserRole.Admin) {
-      void this.router.navigate([ROUTES.admin.dashboard]);
-    } else if (user.role === UserRole.Mentor) {
-      const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
-      if (status === MentorApprovalStatus.Pending) void this.router.navigate([ROUTES.mentor.pending]);
-      else if (status === MentorApprovalStatus.Rejected) void this.router.navigate([ROUTES.mentor.rejected]);
-      else void this.router.navigate([ROUTES.mentor.dashboard]);
-    } else {
-      void this.router.navigate([ROUTES.mentee.dashboard]);
-    }
+    this.auth.signup({
+      name: value.name.trim(),
+      email: value.email.trim(),
+      password: value.password,
+      role: UserRole.Mentee,
+    }).subscribe({
+      next: (user) => this.auth.signupSuccess(user),
+      error: (err: Error) => this.auth.signupFailure(err.message),
+    });
   }
 }
