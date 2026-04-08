@@ -1,12 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
-import { AuthService } from '../../../core/services/auth.service';
+import { AuthFacade } from '../../../core/facades/auth.facade';
 import type { SignupFormValue } from '../ui/signup-form.component';
 import { SignupFormComponent } from '../ui/signup-form.component';
 import { UserRole } from '../../../core/models/user.model';
-import { ROUTES } from '../../../core/routes';
-
 @Component({
   selector: 'mc-signup-page',
   standalone: true,
@@ -35,17 +32,12 @@ import { ROUTES } from '../../../core/routes';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SignupPageComponent implements OnInit {
-  readonly auth = inject(AuthService);
-  private readonly router = inject(Router);
+  readonly auth = inject(AuthFacade);
 
   formValue: SignupFormValue = { name: '', email: '', password: '', agreed: false };
 
   ngOnInit(): void {
-    const user = this.auth.currentUser;
-    if (user) {
-      if (!user.registered) void this.router.navigate([ROUTES.registration.roleInfo]);
-      else this.auth['redirectAfterLogin'](user);
-    }
+    this.auth.ensureGuestOrRedirectForSignup();
   }
 
   onFormValueChange(value: SignupFormValue): void {
@@ -58,9 +50,6 @@ export class SignupPageComponent implements OnInit {
       email: value.email.trim(),
       password: value.password,
       role: UserRole.Mentee,
-    }).subscribe({
-      next: (user) => this.auth.signupSuccess(user),
-      error: (err: Error) => this.auth.signupFailure(err.message),
     });
   }
 }

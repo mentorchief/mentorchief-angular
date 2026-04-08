@@ -1,27 +1,24 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
-import { Store } from '@ngrx/store';
-import { take } from 'rxjs';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 import type { ConversationListItem } from '../../../core/models/chat.model';
 import { UserRole } from '../../../core/models/user.model';
-import {
-  selectConversationIdForMentee,
-  selectMentorConversationListItems,
-  selectSelectedConversation,
-} from '../store/dashboard.selectors';
-import { clearConversationUnread, selectConversation as selectConversationAction, sendChatMessage } from '../store/dashboard.actions';
-import { selectAuthUser } from '../../auth/store/auth.selectors';
+import { MessagingFacade } from '../../../core/facades/messaging.facade';
+import { AuthFacade } from '../../../core/facades/auth.facade';
+import { ReportsFacade } from '../../../core/facades/reports.facade';
+import { isConversationClosed } from '../../../core/utils/chat.utils';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map, combineLatest } from 'rxjs';
 
 const CONV_PAGE_SIZE = 10;
 
 @Component({
   selector: 'mc-mentor-messages-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, FontAwesomeModule, PaginationComponent],
+  imports: [CommonModule, FormsModule, FontAwesomeModule, PaginationComponent, RouterLink],
   template: `
     <div class="h-[calc(100vh-64px)] flex">
       <!-- Conversations List -->
@@ -43,6 +40,7 @@ const CONV_PAGE_SIZE = 10;
             <button
               (click)="selectConversation(conv)"
               [class.bg-muted]="selectedConversation()?.id === conv.id"
+              [class.opacity-85]="conv.locked"
               class="w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left border-b border-border"
             >
               <div class="relative">
@@ -57,7 +55,12 @@ const CONV_PAGE_SIZE = 10;
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between">
-                  <span class="text-foreground font-medium text-sm">{{ conv.name }}</span>
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-foreground font-medium text-sm truncate">{{ conv.name }}</span>
+                    @if (conv.locked) {
+                      <span class="px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border text-[10px] uppercase tracking-wide">Closed</span>
+                    }
+                  </div>
                   <span class="text-muted-foreground text-xs">{{ conv.timestamp }}</span>
                 </div>
                 <p class="text-muted-foreground text-sm truncate mt-0.5">{{ conv.lastMessage }}</p>
@@ -113,17 +116,38 @@ const CONV_PAGE_SIZE = 10;
 
           <!-- Input -->
           <div class="p-4 border-t border-border bg-card">
+            @if (selectedNeedsReport()) {
+              <div class="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-center justify-between gap-3">
+                <p class="text-xs text-amber-800">
+                  This mentorship has ended. Complete the report to proceed with payout release.
+                </p>
+                <a
+                  [routerLink]="['/dashboard/mentor/report', sel.menteeId]"
+                  class="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs hover:opacity-90 no-underline whitespace-nowrap"
+                >
+                  Complete report
+                </a>
+              </div>
+            } @else if (selectedConversationLocked()) {
+              <div class="mb-3 p-3 bg-muted/50 border border-border rounded-md">
+                <p class="text-xs text-muted-foreground">
+                  This mentorship chat is closed. New messages are disabled.
+                </p>
+              </div>
+            }
             <div class="flex gap-3">
               <input
                 type="text"
                 [ngModel]="newMessage()"
                 (ngModelChange)="newMessage.set($event)"
                 (keydown.enter)="sendMessage()"
-                placeholder="Type a message..."
+                [disabled]="selectedConversationLocked()"
+                [placeholder]="selectedConversationLocked() ? 'Chat is closed' : 'Type a message...'"
                 class="flex-1 px-4 py-2.5 bg-input-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring/20"
               />
               <button
                 (click)="sendMessage()"
+                [disabled]="selectedConversationLocked()"
                 class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:opacity-90"
               >
                 Send
@@ -147,13 +171,51 @@ const CONV_PAGE_SIZE = 10;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MentorMessagesPageComponent implements OnInit {
-  private readonly store = inject(Store);
+  private readonly messaging = inject(MessagingFacade);
+  private readonly auth = inject(AuthFacade);
+  private readonly reports = inject(ReportsFacade);
   private readonly route = inject(ActivatedRoute);
   readonly UserRole = UserRole;
 
-  readonly conversations = this.store.selectSignal(selectMentorConversationListItems);
-  readonly selectedConversation = this.store.selectSignal(selectSelectedConversation);
-  readonly currentUser = this.store.selectSignal(selectAuthUser);
+  readonly conversations = toSignal(
+    combineLatest([this.messaging.conversations$, this.messaging.mentorUnread$, this.auth.currentUser$]).pipe(
+      map(([convs, unreadByConv, user]) => {
+        const mentorConvs = user ? convs.filter((c) => c.mentorId === user.id && c.status === 'active') : [];
+        return mentorConvs.map((c) => ({
+          id: c.id,
+          name: c.menteeName,
+          avatar: '',
+          lastMessage: c.lastMessage,
+          timestamp: c.lastTimestamp,
+          unread: (unreadByConv[c.id] ?? 0) > 0,
+          unreadCount: unreadByConv[c.id] ?? 0,
+          locked: isConversationClosed(c.status, c.subscription),
+        } as ConversationListItem));
+      }),
+    ), { initialValue: [] as ConversationListItem[] });
+
+  readonly selectedConversation = toSignal(this.messaging.selectedId$.pipe(
+    map((id) => id ? this.messaging.conversations.find((c) => c.id === id) ?? null : null)
+  ), { initialValue: null });
+
+  readonly currentUser = toSignal(this.auth.currentUser$, { initialValue: null });
+  readonly allReports = toSignal(this.reports.menteeReports$, { initialValue: [] });
+  readonly selectedConversationLocked = computed(() => {
+    const sel = this.selectedConversation();
+    if (!sel) return true;
+    return isConversationClosed(sel.status, sel.subscription);
+  });
+  readonly selectedMentorshipHasReport = computed(() => {
+    const sel = this.selectedConversation();
+    const user = this.currentUser();
+    if (!sel || !user) return false;
+    return this.allReports().some((r) => r.mentorId === user.id && r.menteeId === sel.menteeId);
+  });
+  readonly selectedNeedsReport = computed(() => {
+    const sel = this.selectedConversation();
+    if (!sel) return false;
+    return this.selectedConversationLocked() && !this.selectedMentorshipHasReport();
+  });
 
   readonly convPageSize = CONV_PAGE_SIZE;
   convPage = signal(1);
@@ -188,35 +250,26 @@ export class MentorMessagesPageComponent implements OnInit {
   ngOnInit(): void {
     const mentee = this.route.snapshot.queryParamMap.get('mentee');
     if (mentee) {
-      this.store.select(selectConversationIdForMentee(mentee)).pipe(take(1)).subscribe((convId) => {
-        if (convId) {
-          this.store.dispatch(selectConversationAction({ conversationId: convId }));
-          this.store.dispatch(clearConversationUnread({ conversationId: convId }));
-        }
-      });
+      const user = this.auth.currentUser;
+      const convId = user ? this.messaging.getConversationIdForMentee(user.id, mentee) : null;
+      if (convId) {
+        this.messaging.selectConversation(convId);
+        this.messaging.clearUnread(convId);
+      }
     }
   }
 
   selectConversation(conv: ConversationListItem): void {
-    this.store.dispatch(selectConversationAction({ conversationId: conv.id }));
-    this.store.dispatch(clearConversationUnread({ conversationId: conv.id }));
+    this.messaging.selectConversation(conv.id);
+    this.messaging.clearUnread(conv.id);
   }
 
   sendMessage(): void {
     const text = this.newMessage().trim();
     const sel = this.selectedConversation();
     const user = this.currentUser();
-    if (!text || !sel || !user) return;
-    this.store.dispatch(
-      sendChatMessage({
-        conversationId: sel.id,
-        message: {
-          senderId: user.id,
-          text,
-          timestamp: 'Just now',
-        },
-      }),
-    );
+    if (!text || !sel || !user || this.selectedConversationLocked()) return;
+    this.messaging.sendMessage(sel.id, { senderId: user.id, text, timestamp: 'Just now' });
     this.newMessage.set('');
   }
 

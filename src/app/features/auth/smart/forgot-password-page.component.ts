@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ForgotPasswordFormComponent } from '../ui/forgot-password-form.component';
 
@@ -24,23 +24,50 @@ import { ForgotPasswordFormComponent } from '../ui/forgot-password-form.componen
         <mc-forgot-password-form
           [email]="email"
           [submitted]="submitted"
+          [resendCooldown]="resendCooldown"
           (emailChange)="email = $event"
           (submitRequest)="onSubmit($event)"
-          (sendAgain)="submitted = false"
+          (sendAgain)="onSendAgain()"
         ></mc-forgot-password-form>
       </div>
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ForgotPasswordPageComponent {
+export class ForgotPasswordPageComponent implements OnDestroy {
   email = '';
   submitted = false;
+  resendCooldown = 0;
+  private resendTimer: ReturnType<typeof setInterval> | null = null;
 
   onSubmit(value: string): void {
     if (value.trim()) {
       this.email = value.trim();
       this.submitted = true;
+      this.startResendCooldown();
     }
+  }
+
+  onSendAgain(): void {
+    if (this.resendCooldown > 0) return;
+    this.startResendCooldown();
+  }
+
+  private startResendCooldown(): void {
+    if (this.resendTimer) clearInterval(this.resendTimer);
+    this.resendCooldown = 30;
+    this.resendTimer = setInterval(() => {
+      if (this.resendCooldown <= 1) {
+        this.resendCooldown = 0;
+        if (this.resendTimer) clearInterval(this.resendTimer);
+        this.resendTimer = null;
+        return;
+      }
+      this.resendCooldown -= 1;
+    }, 1000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.resendTimer) clearInterval(this.resendTimer);
   }
 }

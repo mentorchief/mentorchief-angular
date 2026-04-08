@@ -1,22 +1,21 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import { Store } from '@ngrx/store';
-import { Subject, takeUntil } from 'rxjs';
-import type { AppState } from '../../../store/app.state';
+import { Subject, takeUntil, combineLatest } from 'rxjs';
+import { map } from 'rxjs';
 import { RATING_SCALE_MAX } from '../../../core/constants';
-import { selectMenteeReportsForCurrentMentee } from '../store/dashboard.selectors';
 import type { MenteeReport } from '../../../core/models/dashboard.model';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
+import { ReportsFacade } from '../../../core/facades/reports.facade';
+import { AuthFacade } from '../../../core/facades/auth.facade';
 
 const PAGE_SIZE = 5;
 
 @Component({
   selector: 'mc-mentee-reports-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, FontAwesomeModule, PaginationComponent],
+  imports: [CommonModule, FormsModule, FontAwesomeModule, PaginationComponent],
   template: `
     <div class="p-6 lg:p-8">
       <div class="mb-8">
@@ -32,98 +31,108 @@ const PAGE_SIZE = 5;
       </div>
 
       @if (reportsFiltered.length) {
-        <div class="space-y-8">
-          @for (report of reportsPaginated; track report.id) {
-            <article class="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
-              <!-- Report header -->
-              <header class="border-b border-border bg-muted/30 px-6 py-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <p class="text-xs uppercase tracking-wider text-muted-foreground font-medium">Mentorship Report</p>
-                    <h2 class="text-lg font-semibold text-foreground mt-1">Prepared by <a [routerLink]="['/mentor', report.mentorId + '']" class="text-primary hover:underline no-underline">{{ report.mentorName }}</a></h2>
-                    <p class="text-sm text-muted-foreground mt-0.5">{{ formatDate(report.createdAt) }}</p>
-                  </div>
-                  <div class="flex items-center gap-3">
-                    @if (report.rating != null) {
-                      <div class="flex items-center gap-1 text-muted-foreground">
-                        @for (star of [1,2,3,4,5]; track star) {
-                          <fa-icon [icon]="['fas', 'star']" class="w-4 h-4" [class.text-foreground]="star <= report.rating!" [class.opacity-40]="star > report.rating!" />
-                        }
-                        <span class="text-sm font-medium text-foreground ml-1.5">{{ report.rating }}/{{ RATING_SCALE_MAX }}</span>
-                      </div>
-                    }
-                    <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Completed</span>
-                  </div>
-                </div>
-              </header>
+        <div class="bg-card rounded-lg border border-border overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-muted/50">
+                <tr>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Mentor</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Date</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Admin Review</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Rating</th>
+                  <th class="w-[28%] text-left px-5 py-3 text-sm font-medium text-muted-foreground">Summary</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (report of reportsPaginated; track report.id) {
+                  <tr class="border-b border-border last:border-0 hover:bg-muted/30">
+                    <td class="px-5 py-4 text-sm text-foreground font-medium">{{ report.mentorName }}</td>
+                    <td class="px-5 py-4 text-sm text-muted-foreground">{{ formatDate(report.createdAt) }}</td>
+                    <td class="px-5 py-4">
+                      <span
+                        [class]="reviewBadgeClass(report)"
+                        class="px-2.5 py-1 rounded-md text-xs whitespace-nowrap"
+                      >
+                        {{ reviewLabel(report) }}
+                      </span>
+                    </td>
+                    <td class="px-5 py-4 text-sm text-foreground">
+                      {{ report.rating != null ? report.rating + '/' + RATING_SCALE_MAX : 'N/A' }}
+                    </td>
+                    <td class="w-[28%] px-5 py-4 text-sm text-muted-foreground">{{ truncate(report.summary, 80) }}</td>
+                    <td class="px-5 py-4">
+                      <button
+                        type="button"
+                        (click)="openDetails(report)"
+                        class="px-3 py-1.5 border border-border rounded-md text-xs text-foreground hover:bg-muted"
+                      >
+                        View details
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-              <div class="p-6 space-y-6">
-                <!-- Summary -->
+        @if (selectedReport) {
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" (click)="closeDetails()">
+            <div class="bg-card rounded-lg border border-border shadow-lg w-full max-w-3xl max-h-[85vh] overflow-y-auto p-6" (click)="$event.stopPropagation()">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h2 class="text-lg font-semibold text-foreground">Mentorship report by {{ selectedReport.mentorName }}</h2>
+                  <p class="text-sm text-muted-foreground mt-1">{{ formatDate(selectedReport.createdAt) }}</p>
+                </div>
+                <button type="button" (click)="closeDetails()" class="px-3 py-1.5 border border-border rounded-md text-xs hover:bg-muted">Close</button>
+              </div>
+
+              <div class="mt-6 space-y-5">
                 <section>
                   <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Summary</h3>
-                  <p class="text-sm text-foreground leading-relaxed whitespace-pre-line">{{ report.summary }}</p>
+                  <p class="text-sm text-foreground leading-relaxed whitespace-pre-line">{{ selectedReport.summary }}</p>
                 </section>
-
-                @if (report.behaviour) {
-                  <section class="pt-5 border-t border-border">
-                    <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Behaviour &amp; Professionalism</h3>
-                    <p class="text-sm text-foreground leading-relaxed">{{ report.behaviour }}</p>
+                @if (selectedReport.behaviour) {
+                  <section>
+                    <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Behaviour & Professionalism</h3>
+                    <p class="text-sm text-foreground leading-relaxed">{{ selectedReport.behaviour }}</p>
                   </section>
                 }
-
-                <!-- Assessment sections -->
-                <div class="grid sm:grid-cols-1 md:grid-cols-3 gap-6 pt-5 border-t border-border">
-                  @if (report.strengths?.length) {
-                    <section>
-                      <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Strengths</h3>
-                      <ul class="space-y-2">
-                        @for (s of report.strengths; track s) {
-                          <li class="text-sm text-foreground flex gap-2">
-                            <span class="text-muted-foreground shrink-0">•</span>
-                            <span>{{ s }}</span>
-                          </li>
-                        }
-                      </ul>
-                    </section>
-                  }
-                  @if (report.weaknesses?.length) {
-                    <section>
-                      <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Areas of Improvement</h3>
-                      <ul class="space-y-2">
-                        @for (w of report.weaknesses; track w) {
-                          <li class="text-sm text-foreground flex gap-2">
-                            <span class="text-muted-foreground shrink-0">•</span>
-                            <span>{{ w }}</span>
-                          </li>
-                        }
-                      </ul>
-                    </section>
-                  }
-                  @if (report.areasToDevelop?.length) {
-                    <section>
-                      <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Development Priorities</h3>
-                      <ul class="space-y-2">
-                        @for (a of report.areasToDevelop; track a) {
-                          <li class="text-sm text-foreground flex gap-2">
-                            <span class="text-muted-foreground shrink-0">•</span>
-                            <span>{{ a }}</span>
-                          </li>
-                        }
-                      </ul>
-                    </section>
-                  }
-                </div>
-
-                @if (report.recommendations) {
-                  <section class="pt-5 border-t border-border">
+                @if (selectedReport.strengths?.length) {
+                  <section>
+                    <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Strengths</h3>
+                    <p class="text-sm text-foreground">{{ selectedReport.strengths?.join('; ') }}</p>
+                  </section>
+                }
+                @if (selectedReport.weaknesses?.length) {
+                  <section>
+                    <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Areas of Improvement</h3>
+                    <p class="text-sm text-foreground">{{ selectedReport.weaknesses?.join('; ') }}</p>
+                  </section>
+                }
+                @if (selectedReport.areasToDevelop?.length) {
+                  <section>
+                    <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Development Priorities</h3>
+                    <p class="text-sm text-foreground">{{ selectedReport.areasToDevelop?.join('; ') }}</p>
+                  </section>
+                }
+                @if (selectedReport.recommendations) {
+                  <section>
                     <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Recommendations</h3>
-                    <p class="text-sm text-foreground leading-relaxed whitespace-pre-line">{{ report.recommendations }}</p>
+                    <p class="text-sm text-foreground whitespace-pre-line">{{ selectedReport.recommendations }}</p>
+                  </section>
+                }
+                @if (selectedReport.adminReviewNote) {
+                  <section>
+                    <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Admin review note</h3>
+                    <p class="text-sm text-foreground whitespace-pre-line">{{ selectedReport.adminReviewNote }}</p>
                   </section>
                 }
               </div>
-            </article>
-          }
-        </div>
+            </div>
+          </div>
+        }
         <div class="mt-6">
           <mc-pagination
             [totalItems]="reportsFiltered.length"
@@ -148,18 +157,23 @@ const PAGE_SIZE = 5;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MenteeReportsPageComponent implements OnInit, OnDestroy {
-  private readonly store = inject(Store<AppState>);
+  private readonly reports = inject(ReportsFacade);
+  private readonly auth = inject(AuthFacade);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
 
   readonly RATING_SCALE_MAX = RATING_SCALE_MAX;
   reportsList: MenteeReport[] = [];
+  selectedReport: MenteeReport | null = null;
   searchQuery = '';
   readonly pageSize = PAGE_SIZE;
   currentPage = 1;
 
   ngOnInit(): void {
-    this.store.select(selectMenteeReportsForCurrentMentee).pipe(takeUntil(this.destroy$)).subscribe((list) => {
+    combineLatest([this.reports.menteeReports$, this.auth.currentUser$]).pipe(
+      map(([allReports, user]) => user ? allReports.filter((r) => r.menteeId === user.id) : []),
+      takeUntil(this.destroy$),
+    ).subscribe((list) => {
       this.reportsList = list;
       this.cdr.markForCheck();
     });
@@ -198,6 +212,21 @@ export class MenteeReportsPageComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
+  openDetails(report: MenteeReport): void {
+    this.selectedReport = report;
+    this.cdr.markForCheck();
+  }
+
+  closeDetails(): void {
+    this.selectedReport = null;
+    this.cdr.markForCheck();
+  }
+
+  truncate(value: string, max = 100): string {
+    if (!value) return '';
+    return value.length > max ? `${value.slice(0, max).trim()}...` : value;
+  }
+
   formatDate(iso: string): string {
     try {
       return new Date(iso).toLocaleDateString('en-US', {
@@ -208,5 +237,19 @@ export class MenteeReportsPageComponent implements OnInit, OnDestroy {
     } catch {
       return iso;
     }
+  }
+
+  reviewLabel(report: MenteeReport): string {
+    const s = report.adminReviewStatus ?? 'pending';
+    if (s === 'approved') return 'Approved';
+    if (s === 'rejected') return 'Rejected';
+    return 'Pending review';
+  }
+
+  reviewBadgeClass(report: MenteeReport): string {
+    const s = report.adminReviewStatus ?? 'pending';
+    if (s === 'approved') return 'bg-green-100 text-green-700';
+    if (s === 'rejected') return 'bg-destructive/10 text-destructive';
+    return 'bg-amber-100 text-amber-700';
   }
 }

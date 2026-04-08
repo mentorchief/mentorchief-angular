@@ -40,8 +40,16 @@ import {
   faGlobe,
   faCircle,
   faChevronRight,
+  faBell,
+  faBellSlash,
+  faRocket,
+  faUserXmark,
+  faCircleXmark,
+  faHashtag,
+  faHourglassHalf,
+  faRotateLeft,
 } from '@fortawesome/free-solid-svg-icons';
-import { faGoogle, faLinkedin } from '@fortawesome/free-brands-svg-icons';
+import { faGoogle, faLinkedin, faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 
 export const appFontAwesomeIcons = [
   faStar,
@@ -85,6 +93,15 @@ export const appFontAwesomeIcons = [
   faBullseye,
   faGlobe,
   faCircle,
+  faBell,
+  faBellSlash,
+  faRocket,
+  faUserXmark,
+  faCircleXmark,
+  faHashtag,
+  faHourglassHalf,
+  faRotateLeft,
   faGoogle,
   faLinkedin,
+  faWhatsapp,
 ];

@@ -2,16 +2,13 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit }
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
-import { Store } from '@ngrx/store';
-import { take } from 'rxjs';
-import type { AppState } from '../../../store/app.state';
-import { selectMyMentees } from '../store/dashboard.selectors';
-import { selectAuthUserId } from '../../auth/store/auth.selectors';
-import { addMenteeReport, markMenteeCompleted } from '../store/dashboard.actions';
 import { ToastService } from '../../../shared/services/toast.service';
 import type { MenteeListItem } from '../../../core/models/dashboard.model';
 import { ROLE_DISPLAY_LABELS, UserRole } from '../../../core/models/user.model';
 import { ROUTES } from '../../../core/routes';
+import { MentorFacade } from '../../../core/facades/mentor.facade';
+import { ReportsFacade } from '../../../core/facades/reports.facade';
+import { AuthFacade } from '../../../core/facades/auth.facade';
 
 @Component({
   selector: 'mc-mentor-report-form-page',
@@ -161,7 +158,9 @@ import { ROUTES } from '../../../core/routes';
 })
 export class MentorReportFormPageComponent implements OnInit {
   readonly ROUTES = ROUTES;
-  private readonly store = inject(Store<AppState>);
+  private readonly mentorData = inject(MentorFacade);
+  private readonly reportsSvc = inject(ReportsFacade);
+  private readonly auth = inject(AuthFacade);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly fb = inject(FormBuilder);
@@ -169,7 +168,6 @@ export class MentorReportFormPageComponent implements OnInit {
   private readonly cdr = inject(ChangeDetectorRef);
 
   mentee: MenteeListItem | null = null;
-  mentorUserId: string | null = null;
   submitting = false;
 
   form: FormGroup = this.fb.group({
@@ -183,27 +181,20 @@ export class MentorReportFormPageComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    this.store.select(selectAuthUserId).pipe(take(1)).subscribe((id) => {
-      this.mentorUserId = id;
-    });
     const menteeId = this.route.snapshot.paramMap.get('menteeId');
     const id = menteeId ? parseInt(menteeId, 10) : NaN;
     if (Number.isNaN(id)) {
       this.router.navigate([ROUTES.mentor.myMentees]);
       return;
     }
-    this.store
-      .select(selectMyMentees)
-      .pipe(take(1))
-      .subscribe((list) => {
-        const m = list.find((x) => x.id === id);
-        if (!m || m.status !== 'active') {
-          this.router.navigate([ROUTES.mentor.myMentees]);
-          return;
-        }
-        this.mentee = m;
-        this.cdr.markForCheck();
-      });
+    const list = this.mentorData.data.myMentees;
+    const m = list.find((x: MenteeListItem) => x.id === id);
+    if (!m || m.status === 'pending') {
+      this.router.navigate([ROUTES.mentor.myMentees]);
+      return;
+    }
+    this.mentee = m;
+    this.cdr.markForCheck();
   }
 
   onSubmit(): void {
@@ -211,6 +202,7 @@ export class MentorReportFormPageComponent implements OnInit {
     if (!m || this.form.invalid) return;
     this.submitting = true;
     const v = this.form.getRawValue();
+    const mentorUserId = this.auth.currentUser?.id ?? '';
     const toLines = (s: string) =>
       s
         ? s
@@ -218,22 +210,21 @@ export class MentorReportFormPageComponent implements OnInit {
             .map((l) => l.trim())
             .filter(Boolean)
         : undefined;
-    this.store.dispatch(
-      addMenteeReport({
-        menteeId: String(m.id),
-        mentorId: this.mentorUserId ?? '',
-        mentorName: ROLE_DISPLAY_LABELS[UserRole.Mentor],
-        summary: v.summary,
-        rating: v.rating ?? undefined,
-        behaviour: v.behaviour || undefined,
-        strengths: toLines(v.strengths),
-        weaknesses: toLines(v.weaknesses),
-        areasToDevelop: toLines(v.areasToDevelop),
-        recommendations: v.recommendations || undefined,
-      }),
-    );
-    this.store.dispatch(markMenteeCompleted({ menteeId: m.id }));
-    this.toast.success(`Report saved and ${m.name}'s mentorship marked as completed.`);
+    this.reportsSvc.addMenteeReport({
+      subscriptionId: m.subscriptionId,
+      menteeId: String(m.id),
+      mentorId: mentorUserId,
+      mentorName: ROLE_DISPLAY_LABELS[UserRole.Mentor],
+      summary: v.summary,
+      rating: v.rating ?? undefined,
+      behaviour: v.behaviour || undefined,
+      strengths: toLines(v.strengths),
+      weaknesses: toLines(v.weaknesses),
+      areasToDevelop: toLines(v.areasToDevelop),
+      recommendations: v.recommendations || undefined,
+    });
+    this.mentorData.updateMenteeStatus(m.id, 'payment_submitted');
+    this.toast.success(`Report submitted for admin review. Payout for ${m.name} will be released after admin approval.`);
     this.router.navigate([ROUTES.mentor.myMentees]);
   }
 }

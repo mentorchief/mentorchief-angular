@@ -2,13 +2,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { Store } from '@ngrx/store';
-import type { AppState } from '../../../store/app.state';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import type { ChatConversation } from '../../../core/models/chat.model';
 import { UserRole } from '../../../core/models/user.model';
-import { selectAdminConversations, selectSelectedConversation } from '../store/dashboard.selectors';
-import { selectConversation } from '../store/dashboard.actions';
+import { MessagingFacade } from '../../../core/facades/messaging.facade';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs';
 
 @Component({
   selector: 'mc-admin-messages-page',
@@ -185,11 +184,13 @@ import { selectConversation } from '../store/dashboard.actions';
   `,
 })
 export class AdminMessagesPageComponent {
-  private readonly store = inject(Store<AppState>);
+  private readonly messaging = inject(MessagingFacade);
   readonly UserRole = UserRole;
 
-  readonly conversations = this.store.selectSignal(selectAdminConversations);
-  readonly selectedConversation = this.store.selectSignal(selectSelectedConversation);
+  readonly conversations = toSignal(this.messaging.conversations$, { initialValue: [] as ChatConversation[] });
+  readonly selectedConversation = toSignal(this.messaging.selectedId$.pipe(
+    map((id) => id ? this.messaging.conversations.find((c) => c.id === id) ?? null : null)
+  ), { initialValue: null });
   searchQuery = signal('');
   filterStatus = signal<'all' | 'active' | 'past'>('all');
 
@@ -217,7 +218,7 @@ export class AdminMessagesPageComponent {
   }
 
   onSelectConversation(conv: ChatConversation): void {
-    this.store.dispatch(selectConversation({ conversationId: conv.id }));
+    this.messaging.selectConversation(conv.id);
   }
 
   getInitials(name: string): string {

@@ -1,13 +1,12 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Store } from '@ngrx/store';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, combineLatest } from 'rxjs';
+import { map } from 'rxjs';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
-import { ToastService } from '../../../shared/services/toast.service';
-import type { AppState } from '../../../store/app.state';
-import { selectMenteePaymentsForDisplay, selectPlatformConfig } from '../store/dashboard.selectors';
+import { MenteeFacade } from '../../../core/facades/mentee.facade';
+import { UserRole, ROLE_DISPLAY_LABELS } from '../../../core/models/user.model';
 
 type PaymentRow = { id: string; date: string; mentor: string; amount: number; status: 'completed' | 'in_escrow' | 'refunded'; period: string };
 
@@ -117,36 +116,15 @@ const PAGE_SIZE = 10;
         </div>
       </div>
 
-      <!-- Payment Methods -->
-      <div class="mt-8 bg-card rounded-lg border border-border p-5">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg text-foreground font-medium">Payment Methods</h2>
-          <button type="button" (click)="onAddPaymentMethod()" class="px-4 py-2 border border-border text-foreground rounded-md text-sm hover:bg-muted">
-            + Add New
-          </button>
-        </div>
-        <div class="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-          <div class="w-12 h-8 bg-gradient-to-r from-blue-600 to-blue-800 rounded flex items-center justify-center">
-            <span class="text-white text-xs font-bold">VISA</span>
-          </div>
-          <div class="flex-1">
-            <p class="text-foreground text-sm font-medium">•••• •••• •••• 4242</p>
-            <p class="text-muted-foreground text-xs">Expires 12/27</p>
-          </div>
-          <span class="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">Default</span>
-        </div>
-      </div>
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MenteePaymentsPageComponent implements OnInit, OnDestroy {
-  private readonly store = inject(Store<AppState>);
+  private readonly menteeData = inject(MenteeFacade);
   private readonly cdr = inject(ChangeDetectorRef);
-  private readonly toast = inject(ToastService);
   private readonly destroy$ = new Subject<void>();
 
-  readonly platformConfig$ = this.store.select(selectPlatformConfig);
   paymentsList: PaymentRow[] = [];
   readonly pageSize = PAGE_SIZE;
   currentPage = 1;
@@ -154,13 +132,23 @@ export class MenteePaymentsPageComponent implements OnInit, OnDestroy {
   filterStatus = '';
 
   ngOnInit(): void {
-    this.store
-      .select(selectMenteePaymentsForDisplay)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((list) => {
-        this.paymentsList = list;
-        this.cdr.markForCheck();
-      });
+    this.menteeData.data$.pipe(
+      map((d) => {
+        const mentorName = d.activeMentorship?.mentorName ?? ROLE_DISPLAY_LABELS[UserRole.Mentor];
+        return d.payments.map((p) => ({
+          id: p.id,
+          date: p.releaseDate ?? p.month,
+          mentor: mentorName,
+          amount: p.amount,
+          status: (p.status === 'released' ? 'completed' : p.status) as 'completed' | 'in_escrow' | 'refunded',
+          period: p.month,
+        }));
+      }),
+      takeUntil(this.destroy$),
+    ).subscribe((list) => {
+      this.paymentsList = list;
+      this.cdr.markForCheck();
+    });
   }
 
   ngOnDestroy(): void {
@@ -229,7 +217,4 @@ export class MenteePaymentsPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  onAddPaymentMethod(): void {
-    this.toast.info('Payment method management coming soon.');
-  }
 }

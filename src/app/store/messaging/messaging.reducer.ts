@@ -1,74 +1,48 @@
 import { createReducer, on } from '@ngrx/store';
-import type { ChatConversation, ChatConversationCore, ChatMessage, ChatMessageCore } from '../../core/models/chat.model';
+import type { ChatConversation } from '../../core/models/chat.model';
 import { ADMIN_CHATS } from '../../core/data/chats.data';
-import {
-  clearConversationUnread,
-  loadConversations,
-  resetMessaging,
-  selectConversation,
-  sendChatMessage,
-  setMentorUnread,
-} from './messaging.actions';
-import { conversationsAdapter } from './messaging.state';
-import { messagingInitialState } from './messaging.state';
+import { MessagingActions } from './messaging.actions';
 
-const initialUnread: Record<string, number> = { 'conv-1': 1, 'conv-2': 2 };
-
-function toMessageCore(m: ChatMessage | ChatMessageCore): ChatMessageCore {
-  const { senderName, senderRole, ...rest } = m as ChatMessage;
-  return rest;
+export interface MessagingState {
+  conversations: ChatConversation[];
+  selectedId: string | null;
+  mentorUnread: Record<string, number>;
 }
 
-export function toConversationCore(c: ChatConversation): ChatConversationCore {
-  const { mentorName, menteeName, ...rest } = c;
-  return {
-    ...rest,
-    messages: rest.messages.map(toMessageCore),
-  };
-}
-
-const initialConversations = ADMIN_CHATS.map(toConversationCore);
+export const messagingInitialState: MessagingState = {
+  conversations: [...ADMIN_CHATS],
+  selectedId: null,
+  mentorUnread: { 'conv-1': 1, 'conv-2': 2 },
+};
 
 export const messagingReducer = createReducer(
-  { ...conversationsAdapter.addMany(initialConversations, messagingInitialState), mentorUnreadByConversation: initialUnread },
-  on(loadConversations, (state, { conversations, mentorUnread }) =>
-    conversationsAdapter.setAll(conversations.map(toConversationCore), {
-      ...messagingInitialState,
-      mentorUnreadByConversation: mentorUnread ?? state.mentorUnreadByConversation,
-    }),
-  ),
-  on(resetMessaging, () => messagingInitialState),
-  on(selectConversation, (state, { conversationId }) => ({
-    ...state,
-    selectedConversationId: conversationId,
-  })),
-  on(sendChatMessage, (state, { conversationId, message }) => {
-    const conv = state.entities[conversationId];
-    if (!conv) return state;
-    const nextId = conv.messages.length ? Math.max(...conv.messages.map((m: ChatMessageCore) => m.id)) + 1 : 1;
-    const newMessage: ChatMessageCore = { ...message, id: nextId };
-    const updatedConv: ChatConversationCore = {
-      ...conv,
-      messages: [...conv.messages, newMessage],
-      lastMessage: message.text,
-      lastTimestamp: 'Just now',
-    };
-    const isFromMentee = message.senderId === conv.menteeId;
-    const newUnread = isFromMentee
-      ? { ...state.mentorUnreadByConversation, [conversationId]: (state.mentorUnreadByConversation[conversationId] ?? 0) + 1 }
-      : state.mentorUnreadByConversation;
-    return conversationsAdapter.updateOne(
-      { id: conversationId, changes: updatedConv },
-      { ...state, mentorUnreadByConversation: newUnread },
-    );
-  }),
-  on(clearConversationUnread, (state, { conversationId }) => {
-    const next = { ...state.mentorUnreadByConversation };
+  messagingInitialState,
+  on(MessagingActions.selectConversation, (s, { id }): MessagingState => ({ ...s, selectedId: id })),
+  on(MessagingActions.clearUnread, (s, { conversationId }): MessagingState => {
+    const next = { ...s.mentorUnread };
     delete next[conversationId];
-    return { ...state, mentorUnreadByConversation: next };
+    return { ...s, mentorUnread: next };
   }),
-  on(setMentorUnread, (state, { conversationId, count }) => ({
-    ...state,
-    mentorUnreadByConversation: { ...state.mentorUnreadByConversation, [conversationId]: count },
-  })),
+  on(MessagingActions.messageAppended, (s, { conversationId, message }): MessagingState => {
+    const updated = s.conversations.map((c) =>
+      c.id === conversationId
+        ? {
+            ...c,
+            messages: [...c.messages, message],
+            lastMessage: message.text,
+            lastTimestamp: 'Just now',
+          }
+        : c,
+    );
+    let mentorUnread = s.mentorUnread;
+    const conv = s.conversations.find((c) => c.id === conversationId);
+    const isFromMentee = conv && message.senderId === conv.menteeId;
+    if (isFromMentee) {
+      mentorUnread = {
+        ...s.mentorUnread,
+        [conversationId]: (s.mentorUnread[conversationId] ?? 0) + 1,
+      };
+    }
+    return { ...s, conversations: updated, mentorUnread };
+  }),
 );

@@ -3,17 +3,19 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { Store } from '@ngrx/store';
-import { Subject, takeUntil } from 'rxjs';
-import type { AppState } from '../../../store/app.state';
-import { selectActiveMentorsList, selectPastMentorsWithReviews } from '../store/dashboard.selectors';
-import { submitMentorReview } from '../store/dashboard.actions';
+import { Subject, takeUntil, combineLatest } from 'rxjs';
+import { map } from 'rxjs';
 import { ToastService } from '../../../shared/services/toast.service';
-import type { PastMentorSummary, ActiveMentorSummary, MentorReview, MenteeReport } from '../../../core/models/dashboard.model';
+import type { PastMentorSummary, ActiveMentorSummary, MentorReview } from '../../../core/models/dashboard.model';
 import { RATING_SCALE_MAX } from '../../../core/constants';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
+import { MenteeFacade } from '../../../core/facades/mentee.facade';
+import { ReportsFacade } from '../../../core/facades/reports.facade';
+import { MessagingFacade } from '../../../core/facades/messaging.facade';
+import { AuthFacade } from '../../../core/facades/auth.facade';
+import { UsersFacade } from '../../../core/facades/users.facade';
 
-type PastWithReview = PastMentorSummary & { review?: MentorReview; report?: MenteeReport };
+type PastWithReview = PastMentorSummary & { review?: MentorReview };
 
 const ACTIVE_PAGE_SIZE = 5;
 const PAST_PAGE_SIZE = 5;
@@ -39,51 +41,56 @@ const PAST_PAGE_SIZE = 5;
           placeholder="Search by name, title, company..."
           class="mb-4 w-full max-w-md px-4 py-2 bg-input-background border border-border rounded-md text-sm"
         />
-        <div class="grid gap-4">
-          @for (mentor of activeMentorsPaginated; track mentor.id) {
-            <div class="bg-card rounded-lg border border-border p-5">
-              <div class="flex items-start gap-4">
-                <img
-                  [src]="mentor.image"
-                  [alt]="mentor.name"
-                  class="w-16 h-16 rounded-lg object-cover"
-                />
-                <div class="flex-1">
-                  <div class="flex items-start justify-between">
-                    <div>
-                      <h3 class="text-foreground font-medium">{{ mentor.name }}</h3>
-                      <p class="text-muted-foreground text-sm">{{ mentor.title }} at {{ mentor.company }}</p>
-                    </div>
-                    <span class="px-2.5 py-1 bg-green-100 text-green-700 rounded-md text-xs">Active</span>
-                  </div>
-                  <div class="mt-3 flex flex-wrap gap-4 text-sm">
-                    <div class="flex items-center gap-1.5 text-muted-foreground">
-                      <fa-icon [icon]="['fas', 'calendar']" class="w-4 h-4" />
-                      <span>Started {{ mentor.startDate }}</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 text-muted-foreground">
-                      <fa-icon [icon]="['fas', 'dollar-sign']" class="w-4 h-4" />
-                      <span>\${{ mentor.price }}/month</span>
-                    </div>
-                  </div>
-                  <div class="mt-4 flex gap-3">
-                    <a
-                      [routerLink]="['/mentor', mentor.id]"
-                      class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90 no-underline"
-                    >
-                      View Profile
-                    </a>
-                    <a
-                      routerLink="/dashboard/mentee/messages"
-                      class="px-4 py-2 border border-border text-foreground rounded-md text-sm hover:bg-muted no-underline inline-block"
-                    >
-                      Message
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </div>
-          }
+        <div class="bg-card rounded-lg border border-border overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-muted/50">
+                <tr>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Mentor</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Status</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Started</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Price</th>
+                  <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (mentor of activeMentorsPaginated; track mentor.id) {
+                  <tr class="border-b border-border last:border-0 hover:bg-muted/30">
+                    <td class="px-5 py-4">
+                      <div class="flex items-center gap-3">
+                        <img [src]="mentor.image" [alt]="mentor.name" class="w-10 h-10 rounded-md object-cover" />
+                        <div>
+                          <p class="text-foreground text-sm font-medium">{{ mentor.name }}</p>
+                          <p class="text-muted-foreground text-xs">{{ mentor.title }} at {{ mentor.company }}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="px-5 py-4">
+                      <span class="px-2.5 py-1 bg-green-100 text-green-700 rounded-md text-xs">Active</span>
+                    </td>
+                    <td class="px-5 py-4 text-sm text-muted-foreground">{{ mentor.startDate }}</td>
+                    <td class="px-5 py-4 text-sm text-foreground">\${{ mentor.price }}/month</td>
+                    <td class="px-5 py-4">
+                      <div class="flex items-center gap-2">
+                        <a
+                          [routerLink]="['/mentor', mentor.id]"
+                          class="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs hover:opacity-90 no-underline"
+                        >
+                          View Profile
+                        </a>
+                        <a
+                          routerLink="/dashboard/mentee/messages"
+                          class="px-3 py-1.5 border border-border text-foreground rounded-md text-xs hover:bg-muted no-underline inline-block"
+                        >
+                          Message
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
         </div>
         @if (activeMentorsFiltered.length > activePageSize) {
           <div class="mt-4">
@@ -100,7 +107,7 @@ const PAST_PAGE_SIZE = 5;
       <!-- Past Mentorships -->
       <div>
         <h2 class="text-lg text-foreground mb-4">Past Mentorships</h2>
-        <p class="text-muted-foreground text-sm mb-4">Leave a review and rating for mentors after your subscription has ended.</p>
+        <p class="text-muted-foreground text-sm mb-4">Leave a review and rating for mentors after your subscription has ended. Mentor end-of-mentorship reports (with admin approval status) are available in My Reports.</p>
         <input
           type="text"
           [ngModel]="pastSearchQuery"
@@ -113,88 +120,66 @@ const PAST_PAGE_SIZE = 5;
             <p class="text-muted-foreground">No past mentorships yet.</p>
           </div>
         } @else {
-          <div class="grid gap-4">
-            @for (item of pastMentorsPaginated; track item.id) {
-              <div class="bg-card rounded-lg border border-border p-5">
-                <div class="flex items-start gap-4">
-                  <img
-                    [src]="item.image"
-                    [alt]="item.name"
-                    class="w-14 h-14 rounded-lg object-cover grayscale"
-                  />
-                  <div class="flex-1">
-                    <div class="flex items-start justify-between">
-                      <div>
-                        <h3 class="text-foreground font-medium">{{ item.name }}</h3>
-                        <p class="text-muted-foreground text-sm">{{ item.title }}</p>
-                      </div>
-                      <span class="px-2.5 py-1 bg-muted text-muted-foreground rounded-md text-xs">Completed</span>
-                    </div>
-                    <p class="text-muted-foreground text-sm mt-2">
-                      {{ item.startDate }} - {{ item.endDate }}
-                    </p>
-                    @if (item.review) {
-                      <div class="mt-3 p-3 bg-muted/50 rounded-md">
-                        <div class="flex items-center gap-1 text-amber-500">
-                          @for (star of [1,2,3,4,5]; track star) {
-                            <fa-icon [icon]="['fas', star <= item.review!.rating ? 'star' : 'star']" class="w-4 h-4" [class.text-amber-500]="star <= item.review!.rating" [class.text-muted-foreground]="star > item.review!.rating" />
-                          }
-                        </div>
-                        <p class="text-foreground text-sm mt-1">You rated {{ item.review.rating }}/{{ RATING_SCALE_MAX }}</p>
-                        @if (item.review.comment) {
-                          <p class="text-muted-foreground text-sm mt-1">{{ item.review.comment }}</p>
-                        }
-                      </div>
-                    }
-                    @if (item.report) {
-                      <div class="mt-3 rounded-lg border border-border bg-muted/30 overflow-hidden">
-                        <div class="px-4 py-3 border-b border-border">
-                          <div class="flex items-center justify-between">
-                            <span class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Mentor's Report</span>
-                            @if (item.report.rating != null) {
-                              <div class="flex items-center gap-1 text-muted-foreground">
-                                @for (star of [1,2,3,4,5]; track star) {
-                                  <fa-icon [icon]="['fas', 'star']" class="w-3.5 h-3.5" [class.text-foreground]="star <= item.report!.rating!" [class.opacity-40]="star > item.report!.rating!" />
-                                }
-                                <span class="text-xs font-medium text-foreground ml-1">{{ item.report.rating }}/{{ RATING_SCALE_MAX }}</span>
-                              </div>
-                            }
+          <div class="bg-card rounded-lg border border-border overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-muted/50">
+                  <tr>
+                    <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Mentor</th>
+                    <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Status</th>
+                    <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Period</th>
+                    <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Review</th>
+                    <th class="text-left px-5 py-3 text-sm font-medium text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (item of pastMentorsPaginated; track item.id) {
+                    <tr class="border-b border-border last:border-0 hover:bg-muted/30">
+                      <td class="px-5 py-4">
+                        <div class="flex items-center gap-3">
+                          <img [src]="item.image" [alt]="item.name" class="w-10 h-10 rounded-md object-cover grayscale" />
+                          <div>
+                            <p class="text-foreground text-sm font-medium">{{ item.name }}</p>
+                            <p class="text-muted-foreground text-xs">{{ item.title }}</p>
                           </div>
                         </div>
-                        <div class="p-4 space-y-3">
-                          <p class="text-sm text-foreground leading-relaxed">{{ item.report.summary }}</p>
-                          @if (item.report.behaviour) {
-                            <p class="text-xs text-muted-foreground leading-relaxed">
-                              <span class="font-medium text-foreground uppercase tracking-wider">Behaviour:</span>
-                              {{ item.report.behaviour }}
-                            </p>
-                          }
-                          @if ((item.report.weaknesses?.length ?? 0) > 0 || (item.report.areasToDevelop?.length ?? 0) > 0) {
-                            <div class="pt-3 border-t border-border text-xs text-muted-foreground space-y-1.5">
-                              @if (item.report.weaknesses?.length) {
-                                <p><span class="font-medium text-foreground uppercase tracking-wider">Areas of improvement:</span> {{ (item.report.weaknesses ?? []).slice(0, 2).join('; ') }}</p>
-                              }
-                              @if (item.report.areasToDevelop?.length) {
-                                <p><span class="font-medium text-foreground uppercase tracking-wider">Development priorities:</span> {{ (item.report.areasToDevelop ?? []).slice(0, 2).join('; ') }}</p>
-                              }
-                            </div>
-                          }
-                          <a routerLink="/dashboard/mentee/reports" class="text-xs font-medium text-foreground hover:underline no-underline pt-1 inline-block">View full report</a>
-                        </div>
-                      </div>
-                    } @else {
-                      <button
-                        type="button"
-                        (click)="openReviewModal(item)"
-                        class="mt-3 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90"
-                      >
-                        <fa-icon [icon]="['fas', 'star']" class="w-4 h-4 mr-1.5" /> Leave review & rating
-                      </button>
-                    }
-                  </div>
-                </div>
-              </div>
-            }
+                      </td>
+                      <td class="px-5 py-4">
+                        <span class="px-2.5 py-1 bg-muted text-muted-foreground rounded-md text-xs">Completed</span>
+                      </td>
+                      <td class="px-5 py-4 text-sm text-muted-foreground">{{ item.startDate }} - {{ item.endDate }}</td>
+                      <td class="px-5 py-4 text-sm text-foreground">
+                        @if (item.review) {
+                          <div class="flex items-center gap-2">
+                            <span>You rated {{ item.review.rating }}/{{ RATING_SCALE_MAX }}</span>
+                          </div>
+                        } @else {
+                          <span class="text-muted-foreground">Not submitted</span>
+                        }
+                      </td>
+                      <td class="px-5 py-4">
+                        @if (!item.review) {
+                          <button
+                            type="button"
+                            (click)="openReviewModal(item)"
+                            class="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs hover:opacity-90"
+                          >
+                            Leave review & rating
+                          </button>
+                        } @else {
+                          <a
+                            routerLink="/dashboard/mentee/reports"
+                            class="px-3 py-1.5 border border-border text-foreground rounded-md text-xs hover:bg-muted no-underline inline-block"
+                          >
+                            View mentor reports
+                          </a>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
           </div>
           @if (pastMentorsFiltered.length > pastPageSize) {
             <div class="mt-4">
@@ -289,14 +274,75 @@ const PAST_PAGE_SIZE = 5;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MyMentorsPageComponent implements OnInit, OnDestroy {
-  private readonly store = inject(Store<AppState>);
+  private readonly menteeData = inject(MenteeFacade);
+  private readonly reportsSvc = inject(ReportsFacade);
+  private readonly messaging = inject(MessagingFacade);
+  private readonly auth = inject(AuthFacade);
+  private readonly users = inject(UsersFacade);
   private readonly toast = inject(ToastService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
 
   readonly RATING_SCALE_MAX = RATING_SCALE_MAX;
-  readonly activeMentors$ = this.store.select(selectActiveMentorsList);
-  readonly pastMentorsWithReviews$ = this.store.select(selectPastMentorsWithReviews);
+  readonly activeMentors$ = combineLatest([
+    this.menteeData.data$,
+    this.messaging.conversations$,
+    this.auth.currentUser$,
+    this.users.users$,
+  ]).pipe(
+    map(([, convs, user, users]) => {
+      const mine = user ? convs.filter((c) => c.menteeId === user.id && c.status === 'active') : [];
+      const usersById = new Map(users.map((u) => [u.id, u] as const));
+      const seen = new Set<string>();
+      const list: ActiveMentorSummary[] = [];
+      for (const c of mine) {
+        if (seen.has(c.mentorName)) continue;
+        seen.add(c.mentorName);
+        const mentorUser = usersById.get(c.mentorId);
+        list.push({
+          id: Number(c.mentorProfileId) || 0,
+          name: c.mentorName,
+          title: mentorUser?.jobTitle ?? 'Mentor',
+          company: mentorUser?.company ?? 'Mentorchief',
+          image: mentorUser?.avatar ?? ('https://ui-avatars.com/api/?name=' + encodeURIComponent(c.mentorName)),
+          startDate: c.subscription?.startDate ?? '-',
+          price: c.subscription?.amount ?? 0,
+          progress: 0,
+        });
+      }
+      return list;
+    }),
+  );
+  readonly pastMentorsWithReviews$ = combineLatest([
+    this.menteeData.data$,
+    this.reportsSvc.menteeReviews$,
+    this.messaging.conversations$,
+    this.auth.currentUser$,
+    this.users.users$,
+  ]).pipe(
+    map(([, reviews, convs, user, users]) => {
+      const mine = user ? convs.filter((c) => c.menteeId === user.id && c.status === 'past') : [];
+      const usersById = new Map(users.map((u) => [u.id, u] as const));
+      const seen = new Set<string>();
+      const past: PastWithReview[] = [];
+      for (const c of mine) {
+        if (seen.has(c.mentorName)) continue;
+        seen.add(c.mentorName);
+        const mentorUser = usersById.get(c.mentorId);
+        const mentorId = String(c.mentorProfileId);
+        past.push({
+          id: Number(c.mentorProfileId) || 0,
+          name: c.mentorName,
+          title: mentorUser?.jobTitle ?? 'Mentor',
+          image: mentorUser?.avatar ?? ('https://ui-avatars.com/api/?name=' + encodeURIComponent(c.mentorName)),
+          startDate: c.subscription?.startDate ?? '-',
+          endDate: c.subscription?.validUntil ?? '-',
+          review: reviews.find((r) => r.mentorId === mentorId),
+        });
+      }
+      return past;
+    }),
+  );
   activeMentorsList: ActiveMentorSummary[] = [];
   pastMentorsList: PastWithReview[] = [];
   activeSearchQuery = '';
@@ -405,7 +451,7 @@ export class MyMentorsPageComponent implements OnInit, OnDestroy {
     const mentor = this.reviewModalMentor;
     const rating = this.reviewRating;
     if (!mentor || rating < 1) return;
-    this.store.dispatch(submitMentorReview({ mentorId: String(mentor.id), rating, comment: this.reviewComment.trim() }));
+    this.reportsSvc.submitMentorReview(String(mentor.id), rating, this.reviewComment.trim());
     this.toast.success(`Thanks! Your review for ${mentor.name} has been submitted.`);
     this.closeReviewModal();
   }

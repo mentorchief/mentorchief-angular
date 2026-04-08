@@ -1,15 +1,12 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Store } from '@ngrx/store';
 import { Subject, takeUntil } from 'rxjs';
 import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.service';
 import { ToastService } from '../../../shared/services/toast.service';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
-import type { AppState } from '../../../store/app.state';
-import { selectPlatformUsers } from '../store/dashboard.selectors';
-import { addUser, updateUserStatus } from '../store/dashboard.actions';
 import { UserRole, MentorApprovalStatus, type User } from '../../../core/models/user.model';
+import { UsersFacade } from '../../../core/facades/users.facade';
 
 const PAGE_SIZE = 10;
 
@@ -232,13 +229,12 @@ const PAGE_SIZE = 10;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminUsersPageComponent implements OnInit, OnDestroy {
-  private readonly store = inject(Store<AppState>);
+  private readonly userSvc = inject(UsersFacade);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
 
-  /** Data from store (single platform user list). Component holds only filter/pagination UI state. */
   usersList: User[] = [];
   readonly pageSize = PAGE_SIZE;
   currentPage = 1;
@@ -257,13 +253,10 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
   };
 
   ngOnInit(): void {
-    this.store
-      .select(selectPlatformUsers)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((list) => {
-        this.usersList = Array.isArray(list) ? (list as User[]) : [];
-        this.cdr.markForCheck();
-      });
+    this.userSvc.users$.pipe(takeUntil(this.destroy$)).subscribe((list) => {
+      this.usersList = list;
+      this.cdr.markForCheck();
+    });
   }
 
   ngOnDestroy(): void {
@@ -385,7 +378,7 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
       ...(phone?.trim() ? { phone: phone.trim() } : {}),
       ...(role === UserRole.Mentor ? { mentorApprovalStatus: MentorApprovalStatus.Approved } : {}),
     };
-    this.store.dispatch(addUser({ user: newUser }));
+    this.userSvc.add(newUser);
     this.showAddUserForm = false;
     this.addUserForm = { name: '', email: '', password: '', role: UserRole.Mentee, phone: '' };
     this.toast.success(`${nameTrim} has been added.`);
@@ -404,10 +397,7 @@ export class AdminUsersPageComponent implements OnInit, OnDestroy {
       variant: isSuspending ? 'danger' : 'primary',
     });
     if (confirmed) {
-      this.store.dispatch(updateUserStatus({
-        userId: user.id,
-        status: isSuspending ? 'suspended' : 'active',
-      }));
+      this.userSvc.setStatus(user.id, isSuspending ? 'suspended' : 'active');
       this.toast.success(isSuspending ? `${user.name} has been suspended.` : `${user.name} has been activated.`);
     }
   }

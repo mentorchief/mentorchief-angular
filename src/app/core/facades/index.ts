@@ -1,0 +1,9 @@
+export { AuthFacade } from './auth.facade';
+export { UsersFacade } from './users.facade';
+export { PlatformFacade } from './platform.facade';
+export { MentorFacade } from './mentor.facade';
+export { MenteeFacade } from './mentee.facade';
+export { AdminFacade } from './admin.facade';
+export { MessagingFacade } from './messaging.facade';
+export { RegistrationFacade } from './registration.facade';
+export { ReportsFacade } from './reports.facade';

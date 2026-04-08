@@ -1,13 +1,13 @@
+import { ReportsFacade } from '../../../core/facades/reports.facade';
+import { BehaviorSubject } from 'rxjs';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
 import { MentorCardComponent } from '../../../shared/components/mentor-card.component';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
-import { MENTORS, CATEGORIES } from '../../../core/data/mentors.data';
 import type { Mentor } from '../../../core/models/mentor.model';
-import type { AppState } from '../../../store/app.state';
-import { selectMentorProfileReviewCountByMentorId } from '../../dashboard/store/dashboard.selectors';
+import { selectApprovedMentorProfiles } from '../../../store/data-flow.selectors';
 
 const MENTORS_PAGE_SIZE = 9;
 
@@ -74,6 +74,23 @@ const MENTORS_PAGE_SIZE = 9;
               <option value="200+">Over $200</option>
             </select>
           </div>
+
+          <!-- Sort -->
+          <div>
+            <label for="browse-sort" class="block text-sm font-medium text-muted-foreground mb-1.5">Sort by</label>
+            <select
+              id="browse-sort"
+              [(ngModel)]="sortBy"
+              (ngModelChange)="filterMentors()"
+              class="w-full px-4 py-2.5 bg-input-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-primary transition-colors"
+            >
+              <option value="recommended">Recommended</option>
+              <option value="rating-desc">Rating: High to low</option>
+              <option value="price-asc">Price: Low to high</option>
+              <option value="price-desc">Price: High to low</option>
+              <option value="experience-desc">Experience: High to low</option>
+            </select>
+          </div>
         </div>
         <div class="mt-4 pt-4 border-t border-border flex flex-wrap items-center justify-between gap-3">
           <p class="text-sm text-muted-foreground">
@@ -128,10 +145,11 @@ const MENTORS_PAGE_SIZE = 9;
 })
 export class BrowseMentorsPageComponent {
   private readonly cdr = inject(ChangeDetectorRef);
-  private readonly store = inject(Store<AppState>);
-  readonly reviewCountByMentorId$ = this.store.select(selectMentorProfileReviewCountByMentorId);
-  readonly allMentors: Mentor[] = MENTORS;
-  readonly categories: string[] = CATEGORIES;
+  private readonly reportsSvc = inject(ReportsFacade);
+  private readonly store = inject(Store);
+  readonly reviewCountByMentorId$ = new BehaviorSubject<Record<string,number>>(this.reportsSvc.getReviewCountByMentorId());
+  allMentors: Mentor[] = [];
+  categories: string[] = ['All'];
   readonly mentorsPageSize = MENTORS_PAGE_SIZE;
   mentorsPage = 1;
 
@@ -144,8 +162,21 @@ export class BrowseMentorsPageComponent {
   searchQuery = '';
   selectedCategory = 'All';
   priceRange = 'all';
+  sortBy: 'recommended' | 'rating-desc' | 'price-asc' | 'price-desc' | 'experience-desc' = 'recommended';
 
-  filteredMentors: Mentor[] = [...MENTORS];
+  filteredMentors: Mentor[] = [];
+
+  constructor() {
+    this.store.select(selectApprovedMentorProfiles).subscribe((mentors) => {
+      this.allMentors = mentors;
+      this.filteredMentors = [...mentors];
+      this.categories = [
+        'All',
+        ...Array.from(new Set(mentors.flatMap((m) => m.expertise).filter(Boolean))).sort(),
+      ];
+      this.filterMentors();
+    });
+  }
 
   filterMentors(): void {
     let result = [...this.allMentors];
@@ -184,6 +215,23 @@ export class BrowseMentorsPageComponent {
       }
     }
 
+    switch (this.sortBy) {
+      case 'rating-desc':
+        result.sort((a, b) => b.rating - a.rating);
+        break;
+      case 'price-asc':
+        result.sort((a, b) => a.price - b.price);
+        break;
+      case 'price-desc':
+        result.sort((a, b) => b.price - a.price);
+        break;
+      case 'experience-desc':
+        result.sort((a, b) => b.yearsOfExperience - a.yearsOfExperience);
+        break;
+      default:
+        break;
+    }
+
     this.filteredMentors = result;
     this.mentorsPage = 1;
     this.cdr.markForCheck();
@@ -193,6 +241,7 @@ export class BrowseMentorsPageComponent {
     this.searchQuery = '';
     this.selectedCategory = 'All';
     this.priceRange = 'all';
+    this.sortBy = 'recommended';
     this.filteredMentors = [...this.allMentors];
     this.mentorsPage = 1;
     this.cdr.markForCheck();

@@ -1,16 +1,20 @@
+import { PlatformFacade } from '../../../core/facades/platform.facade';
+import { ReportsFacade } from '../../../core/facades/reports.facade';
+import { UsersFacade } from '../../../core/facades/users.facade';
+import { Store } from '@ngrx/store';
+import { BehaviorSubject, combineLatest } from 'rxjs';
+import { map } from 'rxjs';
+import { UserRole, MentorApprovalStatus } from '../../../core/models/user.model';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Store } from '@ngrx/store';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { MentorCardComponent } from '../../../shared/components/mentor-card.component';
-import { MENTORS } from '../../../core/data/mentors.data';
 import { TESTIMONIALS } from '../../../core/data/testimonials.data';
 import type { Mentor } from '../../../core/models/mentor.model';
 import type { Testimonial } from '../../../core/models/testimonial.model';
-import type { AppState } from '../../../store/app.state';
-import { selectPlatformMarketingData, selectMentorProfileReviewCountByMentorId } from '../../dashboard/store/dashboard.selectors';
 import { DEFAULT_SAMPLE_PRICE } from '../../../core/constants';
+import { selectApprovedMentorProfiles } from '../../../store/data-flow.selectors';
 
 @Component({
   selector: 'mc-landing-page',
@@ -266,15 +270,30 @@ import { DEFAULT_SAMPLE_PRICE } from '../../../core/constants';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LandingPageComponent {
-  private readonly store = inject(Store<AppState>);
+  private readonly platformSvc = inject(PlatformFacade);
+  private readonly reportsSvc = inject(ReportsFacade);
+  private readonly userSvc = inject(UsersFacade);
+  private readonly store = inject(Store);
   readonly defaultSamplePrice = DEFAULT_SAMPLE_PRICE;
-  readonly platformData$ = this.store.select(selectPlatformMarketingData);
-  readonly reviewCountByMentorId$ = this.store.select(selectMentorProfileReviewCountByMentorId);
-  readonly featuredMentors: Mentor[] = MENTORS.slice(0, 3);
+  readonly platformData$ = combineLatest([this.platformSvc.config$, this.userSvc.users$]).pipe(
+    map(([config, users]) => ({
+      ...config,
+      total: users.length,
+      mentors: users.filter((u) => u.role === UserRole.Mentor && u.mentorApprovalStatus !== MentorApprovalStatus.Rejected).length,
+    })),
+  );
+  readonly reviewCountByMentorId$ = new BehaviorSubject<Record<string,number>>(this.reportsSvc.getReviewCountByMentorId());
+  featuredMentors: Mentor[] = [];
   readonly testimonials: Testimonial[] = TESTIMONIALS;
 
+  constructor() {
+    this.store.select(selectApprovedMentorProfiles).subscribe((mentors) => {
+      this.featuredMentors = mentors.slice(0, 3);
+    });
+  }
+
   readonly howItWorksSteps = [
-    { icon: ['fas', 'magnifying-glass'] as [string, string], title: 'Find Your Mentor', desc: 'Browse our curated network of verified mentors. Filter by expertise, industry, price, and availability.', step: '01' },
+    { icon: ['fas', 'magnifying-glass'] as [string, string], title: 'Find Your Mentor', desc: 'Browse our curated network of verified mentors. Filter by expertise, industry, and price.', step: '01' },
     { icon: ['fas', 'dollar-sign'] as [string, string], title: 'Subscribe Securely', desc: 'Pay a monthly subscription. Your payment is held in escrow by the platform until the mentorship period completes.', step: '02' },
     { icon: ['fas', 'check'] as [string, string], title: 'Grow & Complete', desc: 'Engage in structured mentorship sessions and communicate through our platform.', step: '03' },
     { icon: ['fas', 'file-lines'] as [string, string], title: 'Get Your Report', desc: 'Receive a detailed performance report from your mentor highlighting your strengths and areas for improvement.', step: '04' },

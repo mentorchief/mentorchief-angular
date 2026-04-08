@@ -41,6 +41,7 @@ export const ROUTES = {
     messages: '/dashboard/mentee/messages',
     payments: '/dashboard/mentee/payments',
     reports: '/dashboard/mentee/reports',
+    notifications: '/dashboard/mentee/notifications',
     settings: '/dashboard/mentee/settings',
   },
 
@@ -53,6 +54,7 @@ export const ROUTES = {
     messages: '/dashboard/mentor/messages',
     earnings: '/dashboard/mentor/earnings',
     reports: '/dashboard/mentor/reports',
+    notifications: '/dashboard/mentor/notifications',
     settings: '/dashboard/mentor/settings',
     report: (menteeId: string) => `/dashboard/mentor/report/${menteeId}`,
     reportView: (reportId: number) => `/dashboard/mentor/report-view/${reportId}`,
@@ -67,6 +69,7 @@ export const ROUTES = {
     messages: '/dashboard/admin/messages',
     reports: '/dashboard/admin/reports',
     mentorshipReports: '/dashboard/admin/mentorship-reports',
+    notifications: '/dashboard/admin/notifications',
     settings: '/dashboard/admin/settings',
   },
 } as const;

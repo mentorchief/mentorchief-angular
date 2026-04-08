@@ -9,9 +9,12 @@ export interface Mentor {
   price: number;
   bio: string;
   image: string;
-  availability: string;
   sessions: number;
   responseTime: string;
   yearsOfExperience: number;
+  /** When set, public profile merges LinkedIn from this `User` in the store (settings stay in sync). */
+  userId?: string;
+  /** Fallback when no store user; browse / public profile link. */
+  linkedin?: string;
 }
 

@@ -1,10 +1,12 @@
+import { PlatformFacade } from '../../../core/facades/platform.facade';
+import { UsersFacade } from '../../../core/facades/users.facade';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Store } from '@ngrx/store';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import type { AppState } from '../../../store/app.state';
-import { selectPlatformMarketingData } from '../../dashboard/store/dashboard.selectors';
+import { combineLatest } from 'rxjs';
+import { map } from 'rxjs';
+import { UserRole, MentorApprovalStatus } from '../../../core/models/user.model';
 
 @Component({
   selector: 'mc-about-page',
@@ -139,8 +141,15 @@ import { selectPlatformMarketingData } from '../../dashboard/store/dashboard.sel
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AboutPageComponent {
-  private readonly store = inject(Store<AppState>);
-  readonly platformData$ = this.store.select(selectPlatformMarketingData);
+  private readonly platformSvc = inject(PlatformFacade);
+  private readonly userSvc = inject(UsersFacade);
+  readonly platformData$ = combineLatest([this.platformSvc.config$, this.userSvc.users$]).pipe(
+    map(([config, users]) => ({
+      ...config,
+      total: users.length,
+      mentors: users.filter((u) => u.role === UserRole.Mentor && u.mentorApprovalStatus !== MentorApprovalStatus.Rejected).length,
+    })),
+  );
   readonly values = [
     { icon: ['fas', 'handshake'] as [string, string], title: 'Trust & Transparency', description: 'We build trust through transparent processes and escrow protection for all transactions.' },
     { icon: ['fas', 'bullseye'] as [string, string], title: 'Quality First', description: 'We verify all mentors to ensure only the best professionals join our platform.' },

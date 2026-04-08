@@ -42,6 +42,9 @@ export interface User {
   password: string;
   role: UserRole;
   avatar: string;
+  /** Mirrors registration personal step; optional for legacy users (derive from `name`). */
+  firstName?: string;
+  lastName?: string;
   registered?: boolean;
   phone?: string;
   location?: string;
@@ -57,7 +60,7 @@ export interface User {
   experiences?: UserExperience[];
   subscriptionCost?: string;
   mentorPlans?: MentorPlan[];
-  availability?: string[];
+  /** Max concurrent mentees as a positive integer string (e.g. "5"). Legacy bucket strings may exist. */
   menteeCapacity?: string;
   /** For mentors: application under admin review. Omitted or 'approved' = can use dashboard. */
   mentorApprovalStatus?: MentorApprovalStatus;

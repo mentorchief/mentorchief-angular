@@ -21,16 +21,6 @@ import type { Mentor } from '../../core/models/mentor.model';
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
         />
-        <div class="absolute top-3 right-3">
-          <span
-            [class]="mentor.availability === 'Available'
-              ? 'bg-green-100 text-green-700'
-              : 'bg-muted text-muted-foreground'"
-            class="px-2.5 py-1 rounded-md text-xs"
-          >
-            {{ mentor.availability === 'Available' ? 'Available' : 'Not Available' }}
-          </span>
-        </div>
       </div>
 
       <!-- Content -->

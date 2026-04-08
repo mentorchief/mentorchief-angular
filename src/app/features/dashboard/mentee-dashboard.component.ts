@@ -1,24 +1,21 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { Store } from '@ngrx/store';
-import type { AppState } from '../../store/app.state';
-import { selectAuthUser } from '../auth/store/auth.selectors';
-import {
-  selectActiveMentorship,
-  selectMenteeSubscription,
-  selectMenteePayments,
-  selectCanCancelSubscriptionForRefund,
-} from './store/dashboard.selectors';
-import { cancelMenteeSubscription } from './store/dashboard.actions';
+import { Subject, combineLatest, takeUntil } from 'rxjs';
+import { map } from 'rxjs';
+import { AuthFacade } from '../../core/facades/auth.facade';
+import { MenteeFacade } from '../../core/facades/mentee.facade';
+import { SubscriptionsFacade } from '../../core/facades/subscriptions.facade';
 import { ConfirmDialogService } from '../../shared/services/confirm-dialog.service';
 import { ToastService } from '../../shared/services/toast.service';
+import type { MentorshipSubscription } from '../../core/models/dashboard.model';
 
 @Component({
   selector: 'mc-mentee-dashboard',
   standalone: true,
-  imports: [CommonModule, FontAwesomeModule, RouterLink],
+  imports: [CommonModule, FontAwesomeModule, RouterLink, FormsModule],
   template: `
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Header -->
@@ -34,6 +31,60 @@ import { ToastService } from '../../shared/services/toast.service';
           <fa-icon [icon]="['fas', 'magnifying-glass']" class="w-4 h-4" /> Find Mentors
         </a>
       </div>
+
+      <!-- Pending Payment Subscriptions -->
+      @if (pendingSubs.length > 0) {
+        <div class="mb-6 space-y-4">
+          @for (sub of pendingSubs; track sub.id) {
+            <div class="bg-card rounded-lg border-2 border-amber-300 p-6">
+              <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                  <fa-icon [icon]="['fas', 'clock']" class="text-amber-600 w-5 h-5" />
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-foreground font-medium">Payment Required — {{ sub.mentorName }}</h3>
+                  <p class="text-muted-foreground text-sm mt-1">
+                    Your mentorship request was approved! Complete a payment of <strong class="text-foreground">\${{ sub.amount }}</strong> to activate your subscription.
+                  </p>
+                  <p class="text-muted-foreground text-xs mt-1">Subscription ID: <span class="font-mono text-foreground">{{ sub.id }}</span></p>
+
+                  @if (sub.status === 'approved_awaiting_payment' && !sub.linkUsed) {
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        (click)="onOpenPaymentDialog(sub)"
+                        class="px-4 py-2.5 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90"
+                      >
+                        I've completed the payment
+                      </button>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-2">
+                      Check your notifications (<fa-icon [icon]="['fas', 'bell']" class="inline w-3 h-3" />) for the WhatsApp payment link.
+                    </p>
+                  }
+                  @if (sub.status === 'approved_awaiting_payment' && sub.linkUsed) {
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        (click)="onOpenPaymentDialog(sub)"
+                        class="px-4 py-2.5 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90"
+                      >
+                        I've completed the payment
+                      </button>
+                    </div>
+                  }
+                  @if (sub.status === 'payment_submitted') {
+                    <div class="mt-4 flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
+                      <fa-icon [icon]="['fas', 'hourglass-half']" class="text-blue-600 w-4 h-4" />
+                      <span class="text-blue-800 text-sm">Payment submitted — awaiting admin verification.</span>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      }
 
       <div class="grid lg:grid-cols-3 gap-6">
         <!-- Main Content -->
@@ -113,7 +164,7 @@ import { ToastService } from '../../shared/services/toast.service';
                       (click)="onCancelSubscription()"
                       class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm hover:bg-red-100 transition-colors"
                     >
-                      <fa-icon [icon]="['fas', 'xmark-circle']" class="w-4 h-4" />
+                      <fa-icon [icon]="['fas', 'circle-xmark']" class="w-4 h-4" />
                       Cancel subscription (full refund)
                     </button>
                   </div>
@@ -133,7 +184,7 @@ import { ToastService } from '../../shared/services/toast.service';
               <span class="text-foreground text-sm">Escrow Protected</span>
             </div>
             <div class="space-y-3">
-              @for (payment of (menteePayments$ | async) ?? []; track payment.id) {
+              @for (payment of (paymentStatusPreview$ | async) ?? []; track payment.id) {
                 <div
                   class="p-3 rounded-md"
                   [class.bg-amber-50]="payment.status === 'in_escrow'"
@@ -178,6 +229,14 @@ import { ToastService } from '../../shared/services/toast.service';
                   }
                 </div>
               }
+              @if (hasMorePayments$ | async) {
+                <a
+                  routerLink="/dashboard/mentee/payments"
+                  class="inline-flex items-center gap-1 text-sm text-primary hover:underline no-underline"
+                >
+                  See more <span aria-hidden="true">→</span>
+                </a>
+              }
             </div>
           </div>
 
@@ -214,19 +273,99 @@ import { ToastService } from '../../shared/services/toast.service';
         </div>
       </div>
     </div>
+
+    <!-- Payment Confirmation Dialog -->
+    @if (paymentDialogSub) {
+      <div class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+        <div class="absolute inset-0 bg-foreground/50 backdrop-blur-sm" (click)="paymentDialogSub = null"></div>
+        <div class="relative bg-card rounded-lg shadow-xl border border-border max-w-md w-full p-6" (click)="$event.stopPropagation()">
+          <h2 class="text-lg font-medium text-foreground mb-2">Confirm Payment</h2>
+          <p class="text-muted-foreground text-sm mb-4">
+            Confirm that you've transferred <strong class="text-foreground">\${{ paymentDialogSub.amount }}</strong> for your mentorship with <strong class="text-foreground">{{ paymentDialogSub.mentorName }}</strong>.
+          </p>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-foreground mb-1.5">Transfer Reference (optional)</label>
+              <input
+                type="text"
+                [(ngModel)]="transferRef"
+                placeholder="e.g., Instapay ref number"
+                class="w-full px-4 py-2.5 bg-input-background border border-border rounded-md text-sm"
+              />
+            </div>
+            <div class="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
+              <fa-icon [icon]="['fas', 'triangle-exclamation']" class="text-amber-600 w-4 h-4 shrink-0 mt-0.5" />
+              <p class="text-amber-800 text-xs">
+                After confirming, the WhatsApp payment link will be invalidated. Only confirm after you've completed the transfer.
+              </p>
+            </div>
+          </div>
+          <div class="flex justify-end gap-3 mt-6">
+            <button type="button" (click)="paymentDialogSub = null" class="px-4 py-2 border border-border text-foreground rounded-md hover:bg-muted text-sm">Cancel</button>
+            <button type="button" (click)="onConfirmPayment()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 text-sm">Confirm Payment</button>
+          </div>
+        </div>
+      </div>
+    }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MenteeDashboardComponent {
-  private readonly store = inject(Store<AppState>);
+export class MenteeDashboardComponent implements OnInit, OnDestroy {
+  private readonly authSvc = inject(AuthFacade);
+  private readonly menteeData = inject(MenteeFacade);
+  private readonly subsFacade = inject(SubscriptionsFacade);
   private readonly confirm = inject(ConfirmDialogService);
   private readonly toast = inject(ToastService);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly destroy$ = new Subject<void>();
 
-  readonly user$ = this.store.select(selectAuthUser);
-  readonly activeMentorship$ = this.store.select(selectActiveMentorship);
-  readonly subscription$ = this.store.select(selectMenteeSubscription);
-  readonly menteePayments$ = this.store.select(selectMenteePayments);
-  readonly canCancelForRefund$ = this.store.select(selectCanCancelSubscriptionForRefund);
+  readonly user$ = this.authSvc.currentUser$;
+  readonly activeMentorship$ = this.menteeData.data$.pipe(map((d) => d.activeMentorship));
+  readonly subscription$ = this.menteeData.data$.pipe(map((d) => d.subscription));
+  readonly menteePayments$ = this.menteeData.data$.pipe(map((d) => d.payments));
+  readonly paymentStatusPreview$ = this.menteeData.data$.pipe(map((d) => d.payments.slice(0, 3)));
+  readonly hasMorePayments$ = this.menteeData.data$.pipe(map((d) => d.payments.length > 3));
+  readonly canCancelForRefund$ = this.menteeData.data$.pipe(map((d) => {
+    const sub = d.subscription;
+    if (!sub || sub.status !== 'active' || !sub.startedAt) return false;
+    const days = Math.floor((Date.now() - new Date(sub.startedAt).getTime()) / 86400000);
+    return days >= 0 && days <= 3;
+  }));
+
+  pendingSubs: MentorshipSubscription[] = [];
+  paymentDialogSub: MentorshipSubscription | null = null;
+  transferRef = '';
+
+  ngOnInit(): void {
+    combineLatest([this.user$, this.subsFacade.all$]).pipe(
+      takeUntil(this.destroy$),
+    ).subscribe(([user, subs]) => {
+      if (!user) { this.pendingSubs = []; return; }
+      this.pendingSubs = subs.filter(
+        (s) => s.menteeId === user.id && (s.status === 'approved_awaiting_payment' || s.status === 'payment_submitted'),
+      );
+      this.cdr.markForCheck();
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  onOpenPaymentDialog(sub: MentorshipSubscription): void {
+    this.paymentDialogSub = sub;
+    this.transferRef = '';
+    this.cdr.markForCheck();
+  }
+
+  onConfirmPayment(): void {
+    if (!this.paymentDialogSub) return;
+    this.subsFacade.confirmPayment(this.paymentDialogSub.id, this.transferRef.trim() || undefined);
+    this.toast.success('Payment confirmed. The admin will review and activate your subscription.');
+    this.paymentDialogSub = null;
+    this.cdr.markForCheck();
+  }
 
   async onCancelSubscription(): Promise<void> {
     const confirmed = await this.confirm.confirm({
@@ -238,7 +377,7 @@ export class MenteeDashboardComponent {
       variant: 'danger',
     });
     if (!confirmed) return;
-    this.store.dispatch(cancelMenteeSubscription());
+    this.menteeData.cancelSubscription();
     this.toast.success(
       'Subscription cancelled. You will receive a full refund. Your mentor has been informed.',
     );

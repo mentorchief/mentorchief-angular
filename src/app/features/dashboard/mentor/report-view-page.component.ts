@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Store } from '@ngrx/store';
-import { map, switchMap } from 'rxjs';
-import type { AppState } from '../../../store/app.state';
+import { map, switchMap, combineLatest } from 'rxjs';
 import { RATING_SCALE_MAX } from '../../../core/constants';
-import { selectReportById } from '../store/dashboard.selectors';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { ROUTES } from '../../../core/routes';
+import { ReportsFacade } from '../../../core/facades/reports.facade';
+import { MentorFacade } from '../../../core/facades/mentor.facade';
+import { UsersFacade } from '../../../core/facades/users.facade';
 
 @Component({
   selector: 'mc-mentor-report-view-page',
@@ -103,14 +103,24 @@ import { ROUTES } from '../../../core/routes';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MentorReportViewPageComponent {
-  private readonly store = inject(Store<AppState>);
+  private readonly reports = inject(ReportsFacade);
+  private readonly mentorData = inject(MentorFacade);
+  private readonly userSvc = inject(UsersFacade);
   private readonly route = inject(ActivatedRoute);
 
   readonly RATING_SCALE_MAX = RATING_SCALE_MAX;
   readonly ROUTES = ROUTES;
   report$ = this.route.paramMap.pipe(
     map((params) => Number(params.get('reportId'))),
-    switchMap((reportId) => this.store.select(selectReportById(reportId))),
+    switchMap((reportId) => combineLatest([this.reports.menteeReports$, this.mentorData.data$]).pipe(
+      map(([allReports, mentorD]) => {
+        const r = allReports.find((x) => x.id === reportId) ?? null;
+        if (!r) return null;
+        const menteeName = mentorD.myMentees.find((m) => String(m.id) === r.menteeId)?.name
+          ?? this.userSvc.getById(r.menteeId)?.name ?? `Mentee #${r.menteeId}`;
+        return { ...r, menteeName };
+      }),
+    )),
   );
 
   formatDate(iso: string): string {

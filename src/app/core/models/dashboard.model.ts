@@ -53,6 +53,10 @@ export interface PendingMentorshipRequest {
   goal: string;
   message: string;
   rating: number | null;
+  /** Mentor id (demo-only: used to match requests for cancellation/filtering). */
+  mentorId?: string;
+  /** Mentee user id (demo-only: used to match requests for cancellation/filtering). */
+  menteeId?: string;
 }
 
 export interface ActiveMenteeSummary {
@@ -207,10 +211,16 @@ export interface MentorProfileReview {
 
 export interface MenteeReport {
   id: number;
+  subscriptionId?: string;
   menteeId: string;
   mentorId: string;
   mentorName: string;
   createdAt: string;
+  /** Admin review status required before mentor payout is released. */
+  adminReviewStatus?: 'pending' | 'approved' | 'rejected';
+  adminReviewedAt?: string;
+  adminReviewerId?: string;
+  adminReviewNote?: string;
   summary: string;
   /** Overall rating 1–5 */
   rating?: number;
@@ -228,6 +238,13 @@ export interface MenteeReport {
 
 /** My Mentees (mentor) */
 
+export type MenteeListStatus =
+  | 'pending'
+  | 'approved_awaiting_payment'
+  | 'payment_submitted'
+  | 'active'
+  | 'completed';
+
 export interface MenteeListItem {
   id: number;
   name: string;
@@ -236,7 +253,9 @@ export interface MenteeListItem {
   plan: string;
   startDate: string;
   progress: number;
-  status: 'active' | 'pending' | 'completed';
+  status: MenteeListStatus;
+  subscriptionId?: string;
+  amount?: number;
 }
 
 /** Admin payments list (admin dashboard) */
@@ -247,7 +266,62 @@ export interface AdminPayment {
   mentee: string;
   mentor: string;
   amount: number;
-  status: 'completed' | 'in_escrow' | 'disputed' | 'refunded';
+  status: 'completed' | 'in_escrow' | 'disputed' | 'refunded' | 'pending_verification';
+  subscriptionId?: string;
+  menteeId?: string;
+  mentorId?: string;
+}
+
+/** In-app notifications */
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: 'mentorship_approved' | 'payment_confirmed' | 'mentorship_declined' | 'subscription_activated' | 'payment_rejected';
+  title: string;
+  message: string;
+  whatsappLink?: string;
+  subscriptionId?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+/** Mentorship subscription tracking (links mentee ↔ mentor with payment state) */
+
+export interface MentorshipSubscription {
+  id: string;
+  menteeId: string;
+  menteeName: string;
+  mentorId: string;
+  mentorName: string;
+  plan: string;
+  amount: number;
+  status:
+    | 'pending_request'
+    | 'approved_awaiting_payment'
+    | 'payment_submitted'
+    | 'active'
+    | 'report_submitted'
+    | 'admin_approved'
+    | 'completed'
+    | 'cancelled'
+    | 'rejected';
+  createdAt: string;
+  paymentConfirmedAt?: string;
+  activatedAt?: string;
+  transferRef?: string;
+  /** Once the mentee confirms payment, the WhatsApp link is invalidated. */
+  linkUsed: boolean;
+}
+
+/** Platform payment receiving account config */
+
+export interface PlatformPaymentConfig {
+  whatsappNumber: string;
+  instapayId: string;
+  bankName: string;
+  bankAccountNumber: string;
+  bankAccountHolder: string;
 }
 
 /** Combined dashboard state */
@@ -282,4 +356,10 @@ export interface DashboardState {
   selectedConversationId: string | null;
   /** Unread message count per conversation for mentor (key = conversationId). */
   mentorUnreadByConversation: Record<string, number>;
+  /** Mentorship subscriptions tracking the full lifecycle. */
+  subscriptions: MentorshipSubscription[];
+  /** In-app notifications for all users. */
+  notifications: AppNotification[];
+  /** Platform payment receiving config. */
+  platformPayment: PlatformPaymentConfig;
 }

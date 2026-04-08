@@ -1,22 +1,33 @@
 import { createReducer, on } from '@ngrx/store';
-import { cancelMenteeSubscription, loadMenteeData, resetMentee } from './mentee.actions';
-import { menteeInitialState, type MenteeState } from './mentee.state';
-import { MENTEE_SEED } from './mentee.seed';
+import type {
+  ActiveMentorship,
+  MenteeSubscription,
+  MenteePayment,
+  ActiveMentorSummary,
+  PastMentorSummary,
+} from '../../core/models/dashboard.model';
+import { MENTEE_SEED } from '../../core/data/mentee.seed';
+import { MenteeActions } from './mentee.actions';
 
-export const menteeReducer = createReducer<MenteeState>(
-  { ...menteeInitialState, ...MENTEE_SEED },
-  on(loadMenteeData, (_, payload) => ({ ...menteeInitialState, ...payload })),
-  on(resetMentee, () => menteeInitialState),
-  on(cancelMenteeSubscription, (state) => {
-    const sub = state.subscription;
-    if (!sub || sub.status !== 'active') return state;
-    return {
-      ...state,
-      activeMentorship: null,
-      subscription: { ...sub, status: 'cancelled' as const },
-      payments: state.payments.map((p) =>
-        p.status === 'in_escrow' ? { ...p, status: 'refunded' as const, paidToMentor: false } : p,
-      ),
-    };
-  }),
+export interface MenteeState {
+  activeMentorship: ActiveMentorship | null;
+  subscription: MenteeSubscription | null;
+  payments: MenteePayment[];
+  myMentors: { active: ActiveMentorSummary[]; past: PastMentorSummary[] };
+}
+
+export const menteeInitialState: MenteeState = {
+  activeMentorship: MENTEE_SEED.activeMentorship,
+  subscription: MENTEE_SEED.subscription,
+  payments: MENTEE_SEED.payments,
+  myMentors: MENTEE_SEED.myMentors,
+};
+
+export const menteeReducer = createReducer(
+  menteeInitialState,
+  on(MenteeActions.cancelSubscription, (s): MenteeState => ({
+    ...s,
+    subscription: null,
+    activeMentorship: null,
+  })),
 );

@@ -1,11 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Store } from '@ngrx/store';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import type { AppState } from '../../../store/app.state';
-import { selectAuthUser } from '../../auth/store/auth.selectors';
-import { Observable } from 'rxjs';
 
 @Component({
   selector: 'mc-mentor-application-pending',
@@ -46,9 +42,6 @@ import { Observable } from 'rxjs';
   `,
 })
 export class MentorApplicationPendingComponent {
-  private readonly store = inject(Store<AppState>);
-  user$: Observable<{ name: string } | null> = this.store.select(selectAuthUser);
-
   refresh(): void {
     if (typeof window !== 'undefined') {
       window.location.reload();

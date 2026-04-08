@@ -2,13 +2,12 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { Store } from '@ngrx/store';
-import type { AppState } from '../../store/app.state';
-import { selectAuthUser } from '../auth/store/auth.selectors';
-import {
-  selectAdminStatsComputed,
-  selectAdminRecentActivities,
-} from './store/dashboard.selectors';
+import { combineLatest, map } from 'rxjs';
+import { AuthFacade } from '../../core/facades/auth.facade';
+import { AdminFacade } from '../../core/facades/admin.facade';
+import { UsersFacade } from '../../core/facades/users.facade';
+import { MentorApprovalStatus, UserRole } from '../../core/models/user.model';
+import { ADMIN_STAT_DISPLAY } from '../../core/constants/display.constants';
 import type { User } from '../../core/models/user.model';
 
 @Component({
@@ -101,8 +100,22 @@ import type { User } from '../../core/models/user.model';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminDashboardComponent {
-  private readonly store = inject(Store<AppState>);
-  readonly user$ = this.store.select(selectAuthUser);
-  readonly adminStats$ = this.store.select(selectAdminStatsComputed);
-  readonly recentActivities$ = this.store.select(selectAdminRecentActivities);
+  private readonly authSvc = inject(AuthFacade);
+  private readonly adminData = inject(AdminFacade);
+  private readonly userSvc = inject(UsersFacade);
+
+  readonly user$ = this.authSvc.currentUser$;
+  readonly adminStats$ = combineLatest([this.userSvc.users$, this.adminData.data$]).pipe(map(([users, admin]) => {
+    const payments = admin.payments;
+    const stats = [
+      { label: 'Total Users', value: String(users.length), change: '—' },
+      { label: 'Active Mentors', value: String(users.filter((u) => u.role === UserRole.Mentor && u.mentorApprovalStatus !== MentorApprovalStatus.Rejected && u.status !== 'suspended').length), change: '—' },
+      { label: 'Active Mentees', value: String(users.filter((u) => u.role === UserRole.Mentee && u.status !== 'suspended').length), change: '—' },
+      { label: 'Monthly Revenue', value: '$' + payments.reduce((s,p) => s+p.amount,0).toLocaleString(), change: '—' },
+      { label: 'Active Sessions', value: String(payments.filter((p) => p.status === 'completed').length), change: '—' },
+      { label: 'Platform Growth', value: users.length + ' users', change: '—' },
+    ];
+    return stats.map((s) => { const d = ADMIN_STAT_DISPLAY[s.label]; return { ...s, icon: d?.icon ?? ['fas','circle'], color: d?.color ?? 'text-gray-600' }; });
+  }));
+  readonly recentActivities$ = this.adminData.data$.pipe(map((d) => d.recentActivities));
 }

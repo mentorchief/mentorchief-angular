@@ -1,19 +1,10 @@
-import { createAction, props } from '@ngrx/store';
-import type {
-  ActiveMentorship,
-  MenteeSubscription,
-  MenteePayment,
-  ActiveMentorSummary,
-  PastMentorSummary,
-} from '../../core/models/dashboard.model';
+import { createActionGroup, emptyProps, props } from '@ngrx/store';
 
-export const loadMenteeData = createAction('[Mentee] Load Data', props<{
-  activeMentorship: ActiveMentorship | null;
-  subscription: MenteeSubscription | null;
-  payments: MenteePayment[];
-  myMentors: { active: ActiveMentorSummary[]; past: PastMentorSummary[] };
-}>());
-
-export const cancelMenteeSubscription = createAction('[Mentee] Cancel Subscription');
-
-export const resetMentee = createAction('[Mentee] Reset');
+export const MenteeActions = createActionGroup({
+  source: 'Mentee',
+  events: {
+    'Cancel Subscription': emptyProps(),
+    'Request Mentorship': props<{ mentorId: string; plan: string; message: string }>(),
+    'Cancel Mentorship Request': props<{ mentorId: string }>(),
+  },
+});

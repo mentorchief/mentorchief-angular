@@ -51,6 +51,8 @@ export interface ConversationListItem {
   lastMessage: string;
   timestamp: string;
   unread: boolean;
+  /** True when conversation is closed and sending is disabled. */
+  locked?: boolean;
   /** Mentor only: number of unread messages from this mentee. */
   unreadCount?: number;
 }

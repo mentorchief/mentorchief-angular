@@ -27,9 +27,11 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
             <button
               type="button"
               (click)="sendAgain.emit()"
-              class="text-sm text-primary hover:underline"
+              [disabled]="resendCooldown > 0"
+              [class.opacity-50]="resendCooldown > 0"
+              class="text-sm text-primary hover:underline disabled:cursor-not-allowed"
             >
-              Send again
+              {{ resendCooldown > 0 ? 'Send again in ' + resendCooldown + 's' : 'Send again' }}
             </button>
           </div>
         </div>
@@ -70,6 +72,7 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 export class ForgotPasswordFormComponent {
   @Input() email = '';
   @Input() submitted = false;
+  @Input() resendCooldown = 0;
 
   @Output() emailChange = new EventEmitter<string>();
   @Output() submitRequest = new EventEmitter<string>();

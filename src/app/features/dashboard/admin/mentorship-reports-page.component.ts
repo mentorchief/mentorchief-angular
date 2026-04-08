@@ -2,14 +2,17 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, 
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { Store } from '@ngrx/store';
-import { Subject, takeUntil } from 'rxjs';
-import type { AppState } from '../../../store/app.state';
+import { Subject, takeUntil, combineLatest } from 'rxjs';
+import { map } from 'rxjs';
 import { RATING_SCALE_MAX } from '../../../core/constants';
-import { selectMenteeReportsWithMenteeNames } from '../store/dashboard.selectors';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 import type { MenteeReport } from '../../../core/models/dashboard.model';
+import { ReportsFacade } from '../../../core/facades/reports.facade';
+import { UsersFacade } from '../../../core/facades/users.facade';
+import { AuthFacade } from '../../../core/facades/auth.facade';
+import { MentorFacade } from '../../../core/facades/mentor.facade';
+import { ToastService } from '../../../shared/services/toast.service';
 
 const PAGE_SIZE = 5;
 
@@ -56,7 +59,12 @@ interface ReportWithMenteeName extends MenteeReport {
                         <span class="text-sm font-medium text-foreground ml-1.5">{{ report.rating }}/{{ RATING_SCALE_MAX }}</span>
                       </div>
                     }
-                    <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Report</span>
+                    <span
+                      [class]="reportStatusBadgeClass(report)"
+                      class="text-xs font-medium uppercase tracking-wider px-2 py-1 rounded-md"
+                    >
+                      {{ reportStatusLabel(report) }}
+                    </span>
                   </div>
                 </div>
               </header>
@@ -109,6 +117,30 @@ interface ReportWithMenteeName extends MenteeReport {
                     <p class="text-sm text-foreground leading-relaxed whitespace-pre-line">{{ report.recommendations }}</p>
                   </section>
                 }
+                @if (report.adminReviewNote) {
+                  <section class="pt-5 border-t border-border">
+                    <h3 class="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Admin review note</h3>
+                    <p class="text-sm text-foreground leading-relaxed whitespace-pre-line">{{ report.adminReviewNote }}</p>
+                  </section>
+                }
+                @if ((report.adminReviewStatus ?? 'pending') === 'pending') {
+                  <section class="pt-5 border-t border-border flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      (click)="onApproveReport(report)"
+                      class="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700"
+                    >
+                      Approve report & release payout
+                    </button>
+                    <button
+                      type="button"
+                      (click)="onRejectReport(report)"
+                      class="px-4 py-2 border border-destructive text-destructive rounded-md text-sm hover:bg-destructive/5"
+                    >
+                      Reject report
+                    </button>
+                  </section>
+                }
               </div>
             </article>
           }
@@ -137,7 +169,11 @@ interface ReportWithMenteeName extends MenteeReport {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminMentorshipReportsPageComponent implements OnInit, OnDestroy {
-  private readonly store = inject(Store<AppState>);
+  private readonly reports = inject(ReportsFacade);
+  private readonly userSvc = inject(UsersFacade);
+  private readonly auth = inject(AuthFacade);
+  private readonly mentorFacade = inject(MentorFacade);
+  private readonly toast = inject(ToastService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
 
@@ -148,7 +184,13 @@ export class AdminMentorshipReportsPageComponent implements OnInit, OnDestroy {
   currentPage = 1;
 
   ngOnInit(): void {
-    this.store.select(selectMenteeReportsWithMenteeNames).pipe(takeUntil(this.destroy$)).subscribe((list) => {
+    this.reports.menteeReports$.pipe(
+      map((rpts) => rpts.map((r) => ({
+        ...r,
+        menteeName: this.userSvc.getById(r.menteeId)?.name ?? `Mentee #${r.menteeId}`,
+      }))),
+      takeUntil(this.destroy$),
+    ).subscribe((list) => {
       this.reportsList = list;
       this.cdr.markForCheck();
     });
@@ -198,5 +240,34 @@ export class AdminMentorshipReportsPageComponent implements OnInit, OnDestroy {
     } catch {
       return iso;
     }
+  }
+
+  reportStatusLabel(report: MenteeReport): string {
+    const s = report.adminReviewStatus ?? 'pending';
+    if (s === 'approved') return 'Approved';
+    if (s === 'rejected') return 'Rejected';
+    return 'Pending review';
+  }
+
+  reportStatusBadgeClass(report: MenteeReport): string {
+    const s = report.adminReviewStatus ?? 'pending';
+    if (s === 'approved') return 'bg-green-100 text-green-700';
+    if (s === 'rejected') return 'bg-destructive/10 text-destructive';
+    return 'bg-amber-100 text-amber-700';
+  }
+
+  onApproveReport(report: ReportWithMenteeName): void {
+    const reviewerId = this.auth.currentUser?.id ?? 'admin';
+    this.reports.reviewMenteeReport(report.id, 'approved', reviewerId);
+    this.mentorFacade.markMenteeCompleted(Number(report.menteeId));
+    this.toast.success(`Report approved. Payout for ${report.menteeName} has been released to mentor escrow cycle.`);
+    this.cdr.markForCheck();
+  }
+
+  onRejectReport(report: ReportWithMenteeName): void {
+    const reviewerId = this.auth.currentUser?.id ?? 'admin';
+    this.reports.reviewMenteeReport(report.id, 'rejected', reviewerId, 'Please revise and resubmit with clearer development outcomes.');
+    this.toast.success(`Report rejected for ${report.menteeName}. Mentor can revise and resubmit.`);
+    this.cdr.markForCheck();
   }
 }

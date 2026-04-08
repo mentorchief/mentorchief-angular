@@ -1,17 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Store } from '@ngrx/store';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 import type { ConversationListItem } from '../../../core/models/chat.model';
 import { UserRole } from '../../../core/models/user.model';
-import {
-  selectMenteeConversationListItems,
-  selectSelectedConversation,
-} from '../store/dashboard.selectors';
-import { selectConversation as selectConversationAction, sendChatMessage } from '../store/dashboard.actions';
-import { selectAuthUser } from '../../auth/store/auth.selectors';
+import { MessagingFacade } from '../../../core/facades/messaging.facade';
+import { AuthFacade } from '../../../core/facades/auth.facade';
+import { isConversationClosed } from '../../../core/utils/chat.utils';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs';
 
 const CONV_PAGE_SIZE = 10;
 
@@ -40,6 +38,7 @@ const CONV_PAGE_SIZE = 10;
             <button
               (click)="selectConversation(conv)"
               [class.bg-muted]="selectedConversation()?.id === conv.id"
+              [class.opacity-85]="conv.locked"
               class="w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left border-b border-border"
             >
               <div class="relative">
@@ -56,7 +55,12 @@ const CONV_PAGE_SIZE = 10;
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between">
-                  <span class="text-foreground font-medium text-sm">{{ conv.name }}</span>
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-foreground font-medium text-sm truncate">{{ conv.name }}</span>
+                    @if (conv.locked) {
+                      <span class="px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border text-[10px] uppercase tracking-wide">Closed</span>
+                    }
+                  </div>
                   <span class="text-muted-foreground text-xs">{{ conv.timestamp }}</span>
                 </div>
                 <p class="text-muted-foreground text-sm truncate mt-0.5">{{ conv.lastMessage }}</p>
@@ -108,21 +112,37 @@ const CONV_PAGE_SIZE = 10;
                 </div>
               </div>
             }
+            @if (isMentorTyping()) {
+              <div class="flex justify-start">
+                <div class="bg-muted text-foreground rounded-lg px-4 py-2">
+                  <p class="text-xs text-muted-foreground">Mentor is typing...</p>
+                </div>
+              </div>
+            }
           </div>
 
           <!-- Input -->
           <div class="p-4 border-t border-border bg-card">
+            @if (selectedConversationLocked()) {
+              <div class="mb-3 p-3 bg-muted/50 border border-border rounded-md">
+                <p class="text-xs text-muted-foreground">
+                  This mentorship chat is closed because the subscription ended or was closed by admin. New messages are disabled.
+                </p>
+              </div>
+            }
             <div class="flex gap-3">
               <input
                 type="text"
                 [ngModel]="newMessage()"
                 (ngModelChange)="newMessage.set($event)"
                 (keydown.enter)="sendMessage()"
-                placeholder="Type a message..."
+                [disabled]="selectedConversationLocked()"
+                [placeholder]="selectedConversationLocked() ? 'Chat is closed' : 'Type a message...'"
                 class="flex-1 px-4 py-2.5 bg-input-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring/20"
               />
               <button
                 (click)="sendMessage()"
+                [disabled]="selectedConversationLocked()"
                 class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:opacity-90"
               >
                 Send
@@ -146,12 +166,38 @@ const CONV_PAGE_SIZE = 10;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MenteeMessagesPageComponent {
-  private readonly store = inject(Store);
+  private readonly messaging = inject(MessagingFacade);
+  private readonly auth = inject(AuthFacade);
   readonly UserRole = UserRole;
+  readonly isMentorTyping = signal(false);
 
-  readonly conversations = this.store.selectSignal(selectMenteeConversationListItems);
-  readonly selectedConversation = this.store.selectSignal(selectSelectedConversation);
-  readonly currentUser = this.store.selectSignal(selectAuthUser);
+  readonly conversations = toSignal(
+    this.messaging.conversations$.pipe(
+      map((convs) => {
+        const user = this.auth.currentUser;
+        const menteeConvs = user ? convs.filter((c) => c.menteeId === user.id) : [];
+        return menteeConvs.map((c) => ({
+          id: c.id,
+          name: c.mentorName,
+          avatar: '',
+          lastMessage: c.lastMessage,
+          timestamp: c.lastTimestamp,
+          unread: false,
+          locked: isConversationClosed(c.status, c.subscription),
+        } as ConversationListItem));
+      }),
+    ), { initialValue: [] as ConversationListItem[] });
+
+  readonly selectedConversation = toSignal(this.messaging.selectedId$.pipe(
+    map((id) => id ? this.messaging.conversations.find((c) => c.id === id) ?? null : null)
+  ), { initialValue: null });
+
+  readonly currentUser = toSignal(this.auth.currentUser$, { initialValue: null });
+  readonly selectedConversationLocked = computed(() => {
+    const sel = this.selectedConversation();
+    if (!sel) return true;
+    return isConversationClosed(sel.status, sel.subscription);
+  });
 
   readonly convPageSize = CONV_PAGE_SIZE;
   convPage = signal(1);
@@ -184,28 +230,25 @@ export class MenteeMessagesPageComponent {
   }
 
   selectConversation(conv: ConversationListItem): void {
-    this.store.dispatch(selectConversationAction({ conversationId: conv.id }));
+    this.messaging.selectConversation(conv.id);
   }
 
   sendMessage(): void {
     const text = this.newMessage().trim();
     const sel = this.selectedConversation();
     const user = this.currentUser();
-    if (!text || !sel || !user) return;
-    this.store.dispatch(
-      sendChatMessage({
-        conversationId: sel.id,
-        message: {
-          senderId: user.id,
-          text,
-          timestamp: 'Just now',
-        },
-      }),
-    );
+    if (!text || !sel || !user || this.selectedConversationLocked()) return;
+    this.messaging.sendMessage(sel.id, { senderId: user.id, text, timestamp: 'Just now' });
     this.newMessage.set('');
+    this.simulateMentorTyping();
   }
 
   getInitials(name: string): string {
     return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  }
+
+  private simulateMentorTyping(): void {
+    this.isMentorTyping.set(true);
+    window.setTimeout(() => this.isMentorTyping.set(false), 1400);
   }
 }

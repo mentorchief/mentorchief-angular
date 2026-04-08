@@ -1,13 +1,12 @@
+import { ReportsFacade } from '../../../core/facades/reports.facade';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Store } from '@ngrx/store';
 import { combineLatest, map } from 'rxjs';
-import { MENTORS } from '../../../core/data/mentors.data';
 import type { Mentor } from '../../../core/models/mentor.model';
-import type { AppState } from '../../../store/app.state';
-import { selectMentorProfileReviews } from '../../dashboard/store/dashboard.selectors';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { selectApprovedMentorProfiles } from '../../../store/data-flow.selectors';
 
 @Component({
   selector: 'mc-mentor-reviews-page',
@@ -63,12 +62,13 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 })
 export class MentorReviewsPageComponent {
   private readonly route = inject(ActivatedRoute);
-  private readonly store = inject(Store<AppState>);
+  private readonly reportsSvc = inject(ReportsFacade);
+  private readonly store = inject(Store);
 
   mentor: Mentor | undefined;
 
   readonly profileReviews$ = combineLatest([
-    this.store.select(selectMentorProfileReviews),
+    this.reportsSvc.mentorProfileReviews$,
     this.route.paramMap,
   ]).pipe(
     map(([reviews, params]) => {
@@ -79,7 +79,9 @@ export class MentorReviewsPageComponent {
 
   constructor() {
     const id = this.route.snapshot.paramMap.get('id');
-    this.mentor = MENTORS.find((m) => m.id === id);
+    let mentors: Mentor[] = [];
+    this.store.select(selectApprovedMentorProfiles).subscribe((m) => (mentors = m)).unsubscribe();
+    this.mentor = mentors.find((m) => m.id === id);
   }
 
   getInitials(name: string): string {

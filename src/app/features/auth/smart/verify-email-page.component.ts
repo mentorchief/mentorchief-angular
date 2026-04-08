@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { VerifyEmailFormComponent } from '../ui/verify-email-form.component';
 
@@ -27,6 +27,7 @@ import { VerifyEmailFormComponent } from '../ui/verify-email-form.component';
           [error]="error"
           [verified]="verified"
           [resent]="resent"
+          [resendCooldown]="resendCooldown"
           (codeChange)="code = $event; error = null"
           (resend)="onResend()"
           (verifiedChange)="onVerified()"
@@ -36,21 +37,43 @@ import { VerifyEmailFormComponent } from '../ui/verify-email-form.component';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class VerifyEmailPageComponent {
+export class VerifyEmailPageComponent implements OnDestroy {
   code: string[] = ['', '', '', '', '', ''];
   readonly mockEmail = 'user@example.com';
   error: string | null = null;
   verified = false;
   resent = false;
+  resendCooldown = 0;
+  private resendTimer: ReturnType<typeof setInterval> | null = null;
 
   onResend(): void {
+    if (this.resendCooldown > 0) return;
     this.resent = true;
     this.code = ['', '', '', '', '', ''];
     this.error = null;
-    setTimeout(() => (this.resent = false), 3000);
+    setTimeout(() => (this.resent = false), 1000);
+    this.startResendCooldown();
   }
 
   onVerified(): void {
     this.verified = true;
+  }
+
+  private startResendCooldown(): void {
+    if (this.resendTimer) clearInterval(this.resendTimer);
+    this.resendCooldown = 30;
+    this.resendTimer = setInterval(() => {
+      if (this.resendCooldown <= 1) {
+        this.resendCooldown = 0;
+        if (this.resendTimer) clearInterval(this.resendTimer);
+        this.resendTimer = null;
+        return;
+      }
+      this.resendCooldown -= 1;
+    }, 1000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.resendTimer) clearInterval(this.resendTimer);
   }
 }

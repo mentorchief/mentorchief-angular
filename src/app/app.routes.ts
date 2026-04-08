@@ -49,6 +49,7 @@ import { AdminMentorshipReportsPageComponent } from './features/dashboard/admin/
 import { AdminMentorApplicationsPageComponent } from './features/dashboard/admin/mentor-applications-page.component';
 import { AdminMessagesPageComponent } from './features/dashboard/admin/messages-page.component';
 import { AdminSettingsPageComponent } from './features/dashboard/admin/settings-page.component';
+import { NotificationsPageComponent } from './features/dashboard/notifications-page.component';
 
 // Public pages
 import { HowItWorksPageComponent } from './features/public/smart/how-it-works-page.component';
@@ -108,6 +109,7 @@ export const routes: Routes = [
       { path: 'messages', component: MenteeMessagesPageComponent },
       { path: 'payments', component: MenteePaymentsPageComponent },
       { path: 'reports', component: MenteeReportsPageComponent },
+      { path: 'notifications', component: NotificationsPageComponent },
       { path: 'settings', component: MenteeSettingsPageComponent },
     ],
   },
@@ -125,6 +127,7 @@ export const routes: Routes = [
       { path: 'messages', component: MentorMessagesPageComponent },
       { path: 'earnings', component: MentorEarningsPageComponent },
       { path: 'reports', component: MentorReportsPageComponent },
+      { path: 'notifications', component: NotificationsPageComponent },
       { path: 'settings', component: MentorSettingsPageComponent },
     ],
   },
@@ -140,6 +143,7 @@ export const routes: Routes = [
       { path: 'payments', component: AdminPaymentsPageComponent },
       { path: 'reports', component: AdminReportsPageComponent },
       { path: 'mentorship-reports', component: AdminMentorshipReportsPageComponent },
+      { path: 'notifications', component: NotificationsPageComponent },
       { path: 'settings', component: AdminSettingsPageComponent },
     ],
   },

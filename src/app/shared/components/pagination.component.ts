@@ -7,7 +7,7 @@ import { CommonModule } from '@angular/common';
   imports: [CommonModule],
   template: `
     @if (totalItems > pageSize) {
-      <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border">
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-4">
         <p class="text-muted-foreground text-sm">
           Showing {{ startIndex }}–{{ endIndex }} of {{ totalItems }}
         </p>

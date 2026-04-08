@@ -60,11 +60,11 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
           <button
             type="button"
             (click)="resend.emit()"
-            [disabled]="resent"
-            [class]="resent ? 'text-green-600 cursor-default' : 'text-primary hover:underline'"
+            [disabled]="resent || resendCooldown > 0"
+            [class]="resent || resendCooldown > 0 ? 'text-green-600 cursor-default' : 'text-primary hover:underline'"
             class="inline-flex items-center gap-1.5 text-sm transition-colors"
           >
-            {{ resent ? 'Code resent' : 'Resend code' }}
+            {{ resent ? 'Code resent' : (resendCooldown > 0 ? 'Resend in ' + resendCooldown + 's' : 'Resend code') }}
           </button>
         </div>
       }
@@ -86,6 +86,7 @@ export class VerifyEmailFormComponent {
   @Input() error: string | null = null;
   @Input() verified = false;
   @Input() resent = false;
+  @Input() resendCooldown = 0;
 
   @Output() codeChange = new EventEmitter<string[]>();
   @Output() resend = new EventEmitter<void>();

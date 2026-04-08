@@ -1,0 +1,26 @@
+---
+description: Registration flows and role settings must stay aligned (mentor & mentee).
+alwaysApply: true
+---
+
+# Registration ↔ settings parity
+
+Any change to **mentor or mentee registration** (fields, labels, validation, steps, optional/required rules, capacity/pricing limits, chips UX, file upload behavior) must be reflected on the matching **dashboard settings** page, and **vice versa**.
+
+## Scope
+
+| Role | Registration | Settings |
+|------|----------------|----------|
+| Mentor | `src/app/features/registration/smart/` (e.g. career, biography, preference, preview) | `src/app/features/dashboard/mentor/settings-page.component.ts` |
+| Mentee | same folder (role-specific steps) | `src/app/features/dashboard/mentee/settings-page.component.ts` |
+
+Shared behavior should reuse **`src/app/core/constants.ts`**, **`src/app/core/utils/user-display.utils.ts`** (`displayNameParts`), and **`src/app/core/models/user.model.ts`** where appropriate—avoid duplicating labels or limits in only one place.
+
+## Checklist when editing either side
+
+- Same field names and semantics as `User` / registration state.
+- Same required vs optional rules and min/max (e.g. bio length, `MENTEE_CAPACITY_MAX`, plan rules).
+- Same section order and copy tone where the UX should match (personal → career/background → bio/skills → mentor-only: preferences/payout).
+- If a registration step is removed or renamed, update the corresponding settings block and intro copy.
+
+When implementing a feature, treat registration and settings as **one logical surface** split across routes.

@@ -1,9 +1,13 @@
 import { createReducer, on } from '@ngrx/store';
-import { loadPlatformConfig, resetPlatform } from './platform.actions';
-import { platformInitialState } from './platform.state';
+import type { PlatformConfig } from '../../core/data/platform.state';
+import { platformInitialState } from '../../core/data/platform.state';
+import { PlatformActions } from './platform.actions';
+
+export type PlatformState = PlatformConfig;
+
+const initial: PlatformState = { ...platformInitialState.config };
 
 export const platformReducer = createReducer(
-  platformInitialState,
-  on(loadPlatformConfig, (state, { config }) => ({ ...state, config })),
-  on(resetPlatform, () => platformInitialState),
+  initial,
+  on(PlatformActions.updateConfig, (state, { changes }): PlatformState => ({ ...state, ...changes })),
 );

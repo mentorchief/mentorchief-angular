@@ -2,23 +2,14 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { Store } from '@ngrx/store';
-import { Observable } from 'rxjs';
-import type { AppState } from '../../store/app.state';
-import { selectAuthUser } from '../../features/auth/store/auth.selectors';
-import { logout } from '../../features/auth/store/auth.actions';
+import { AuthFacade } from '../facades/auth.facade';
 import { MentorApprovalStatus, UserRole, type User } from '../models/user.model';
 import { ROUTES } from '../routes';
 import { NavbarComponent } from '../../shared/components/navbar.component';
 import { ConfirmDialogService } from '../../shared/services/confirm-dialog.service';
 
 type IconProp = [string, string];
-
-interface NavItem {
-  label: string;
-  path: string;
-  icon: IconProp;
-}
+interface NavItem { label: string; path: string; icon: IconProp; }
 
 @Component({
   selector: 'mc-dashboard-layout',
@@ -28,9 +19,8 @@ interface NavItem {
     <div class="min-h-screen bg-background">
       <mc-navbar />
       <div class="flex">
-        <!-- Sidebar -->
         <aside class="hidden lg:block w-64 min-h-[calc(100vh-64px)] bg-card border-r border-border p-4">
-          @if (user$ | async; as user) {
+          @if (auth.currentUser$ | async; as user) {
             <div class="mb-6 p-3 bg-muted/50 rounded-lg">
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 bg-primary rounded-md flex items-center justify-center">
@@ -42,7 +32,6 @@ interface NavItem {
                 </div>
               </div>
             </div>
-
             <nav class="space-y-1">
               @for (item of getNavItems(user); track item.path) {
                 <a
@@ -56,7 +45,6 @@ interface NavItem {
                 </a>
               }
             </nav>
-
             <div class="mt-6 pt-6 border-t border-border">
               <button
                 (click)="onLogout()"
@@ -68,8 +56,6 @@ interface NavItem {
             </div>
           }
         </aside>
-
-        <!-- Main Content -->
         <main class="flex-1 min-h-[calc(100vh-64px)]">
           <div class="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-sm text-amber-800">
             Demo data – numbers and names are for illustration only.
@@ -82,9 +68,8 @@ interface NavItem {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardLayoutComponent {
-  private readonly store = inject(Store<AppState>);
+  readonly auth = inject(AuthFacade);
   private readonly confirmDialog = inject(ConfirmDialogService);
-  readonly user$: Observable<User | null> = this.store.select(selectAuthUser);
 
   getInitials(name: string): string {
     return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
@@ -98,32 +83,24 @@ export class DashboardLayoutComponent {
         { label: 'Messages', path: ROUTES.mentee.messages, icon: ['fas', 'message'] },
         { label: 'Payments', path: ROUTES.mentee.payments, icon: ['fas', 'credit-card'] },
         { label: 'Reports', path: ROUTES.mentee.reports, icon: ['fas', 'file-lines'] },
+        { label: 'Notifications', path: ROUTES.mentee.notifications, icon: ['fas', 'bell'] },
         { label: 'Settings', path: ROUTES.mentee.settings, icon: ['fas', 'gear'] },
       ];
     }
-
     if (user.role === UserRole.Mentor) {
       const status = user.mentorApprovalStatus ?? MentorApprovalStatus.Approved;
-      if (status === MentorApprovalStatus.Pending) {
-        return [
-          { label: 'Application status', path: ROUTES.mentor.pending, icon: ['fas', 'clock'] },
-        ];
-      }
-      if (status === MentorApprovalStatus.Rejected) {
-        return [
-          { label: 'Application status', path: ROUTES.mentor.rejected, icon: ['fas', 'circle-xmark'] },
-        ];
-      }
+      if (status === MentorApprovalStatus.Pending) return [{ label: 'Application status', path: ROUTES.mentor.pending, icon: ['fas', 'clock'] }];
+      if (status === MentorApprovalStatus.Rejected) return [{ label: 'Application status', path: ROUTES.mentor.rejected, icon: ['fas', 'circle-xmark'] }];
       return [
         { label: 'Dashboard', path: ROUTES.mentor.dashboard, icon: ['fas', 'house'] },
         { label: 'My Mentees', path: ROUTES.mentor.myMentees, icon: ['fas', 'users'] },
         { label: 'Messages', path: ROUTES.mentor.messages, icon: ['fas', 'message'] },
         { label: 'Earnings', path: ROUTES.mentor.earnings, icon: ['fas', 'wallet'] },
         { label: 'Reports', path: ROUTES.mentor.reports, icon: ['fas', 'file-lines'] },
+        { label: 'Notifications', path: ROUTES.mentor.notifications, icon: ['fas', 'bell'] },
         { label: 'Settings', path: ROUTES.mentor.settings, icon: ['fas', 'gear'] },
       ];
     }
-
     if (user.role === UserRole.Admin) {
       return [
         { label: 'Dashboard', path: ROUTES.admin.dashboard, icon: ['fas', 'house'] },
@@ -132,13 +109,11 @@ export class DashboardLayoutComponent {
         { label: 'Users', path: ROUTES.admin.users, icon: ['fas', 'users'] },
         { label: 'Payments', path: ROUTES.admin.payments, icon: ['fas', 'credit-card'] },
         { label: 'Mentorship Reports', path: ROUTES.admin.mentorshipReports, icon: ['fas', 'file-lines'] },
+        { label: 'Notifications', path: ROUTES.admin.notifications, icon: ['fas', 'bell'] },
         { label: 'Settings', path: ROUTES.admin.settings, icon: ['fas', 'gear'] },
       ];
     }
-
-    return [
-      { label: 'Dashboard', path: ROUTES.mentee.dashboard, icon: ['fas', 'house'] },
-    ];
+    return [{ label: 'Dashboard', path: ROUTES.mentee.dashboard, icon: ['fas', 'house'] }];
   }
 
   async onLogout(): Promise<void> {
@@ -149,8 +124,6 @@ export class DashboardLayoutComponent {
       cancelLabel: 'Cancel',
       variant: 'default',
     });
-    if (confirmed) {
-      this.store.dispatch(logout());
-    }
+    if (confirmed) this.auth.logout();
   }
 }

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AuthService } from '../../../core/services/auth.service';
+import { AuthFacade } from '../../../core/facades/auth.facade';
 import type { LoginFormValue } from '../ui/login-form.component';
 import { LoginFormComponent } from '../ui/login-form.component';
 
@@ -24,13 +24,12 @@ import { LoginFormComponent } from '../ui/login-form.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LoginPageComponent implements OnInit {
-  readonly auth = inject(AuthService);
+  readonly auth = inject(AuthFacade);
 
   formValue: LoginFormValue = { email: '', password: '' };
 
   ngOnInit(): void {
-    const user = this.auth.currentUser;
-    if (user) this.auth['redirectAfterLogin'](user);
+    this.auth.ensureGuestOrRedirectForLogin();
   }
 
   onFormValueChange(value: LoginFormValue): void {
@@ -38,9 +37,6 @@ export class LoginPageComponent implements OnInit {
   }
 
   onSubmitted(value: LoginFormValue): void {
-    this.auth.login({ email: value.email.trim(), password: value.password }).subscribe({
-      next: (user) => this.auth.loginSuccess(user),
-      error: (err: Error) => this.auth.loginFailure(err.message),
-    });
+    this.auth.login({ email: value.email.trim(), password: value.password });
   }
 }

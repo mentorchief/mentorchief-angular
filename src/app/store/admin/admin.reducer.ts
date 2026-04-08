@@ -1,10 +1,39 @@
-import { createReducer, on } from '@ngrx/store';
-import { loadAdminData, resetAdmin } from './admin.actions';
-import { adminInitialState, type AdminState } from './admin.state';
-import { ADMIN_SEED } from './admin.seed';
+import { createReducer } from '@ngrx/store';
+import type {
+  AdminStat,
+  PendingAction,
+  RecentActivity,
+  AdminPayment,
+  ReportMetric,
+  RevenueBar,
+  UserGrowthBar,
+  TopMentorRow,
+  ReportActivityItem,
+} from '../../core/models/dashboard.model';
+import { ADMIN_SEED } from '../../core/data/admin.seed';
 
-export const adminReducer = createReducer<AdminState>(
-  { ...adminInitialState, ...ADMIN_SEED },
-  on(loadAdminData, (_, payload) => ({ ...adminInitialState, ...payload })),
-  on(resetAdmin, () => adminInitialState),
-);
+export interface AdminReports {
+  metrics: ReportMetric[];
+  revenueData: RevenueBar[];
+  userGrowth: UserGrowthBar[];
+  topMentors: TopMentorRow[];
+  recentActivity: ReportActivityItem[];
+}
+
+export interface AdminState {
+  stats: AdminStat[];
+  pendingActions: PendingAction[];
+  recentActivities: RecentActivity[];
+  reports: AdminReports;
+  payments: AdminPayment[];
+}
+
+export const adminInitialState: AdminState = {
+  stats: ADMIN_SEED.stats,
+  pendingActions: ADMIN_SEED.pendingActions,
+  recentActivities: ADMIN_SEED.recentActivities,
+  reports: ADMIN_SEED.reports,
+  payments: ADMIN_SEED.payments,
+};
+
+export const adminReducer = createReducer(adminInitialState);

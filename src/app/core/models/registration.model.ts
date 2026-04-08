@@ -1,12 +1,4 @@
-export interface Experience {
-  id: string;
-  title: string;
-  company: string;
-  startDate: string;
-  endDate: string;
-  current: boolean;
-  description: string;
-}
+import type { UserExperience, UserRole } from './user.model';
 
 export type MentorPlanDuration = 'monthly' | 'quarterly' | '6months';
 
@@ -16,8 +8,6 @@ export interface MentorPlan {
   /** Stored as string during registration; convert to number where needed. */
   price: string;
 }
-
-import type { UserRole } from './user.model';
 
 export type RegistrationRole = UserRole.Mentee | UserRole.Mentor | null;
 
@@ -32,14 +22,13 @@ export interface RegistrationData {
   jobTitle: string;
   company: string;
   yearsOfExperience: string;
-  experiences: Experience[];
+  experiences: UserExperience[];
   bio: string;
   skills: string[];
   tools: string[];
   portfolioUrl: string;
   subscriptionCost: string;
   mentorPlans: MentorPlan[];
-  availability: string[];
   menteeCapacity: string;
 }
 

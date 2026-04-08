@@ -1,16 +1,16 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { Store } from '@ngrx/store';
 import { ToastService } from '../../../shared/services/toast.service';
-import type { AppState } from '../../../store/app.state';
-import {
-  selectReportMetricsComputed,
-  selectReportRevenueChart,
-  selectReportUserGrowthChartComputed,
-  selectReportTopMentors,
-  selectReportRecentActivity,
-} from '../store/dashboard.selectors';
+import { Observable, combineLatest } from 'rxjs';
+import { map } from 'rxjs';
+import { AdminFacade } from '../../../core/facades/admin.facade';
+import { UsersFacade } from '../../../core/facades/users.facade';
+import { ReportsFacade } from '../../../core/facades/reports.facade';
+import { PlatformFacade } from '../../../core/facades/platform.facade';
+import { MentorApprovalStatus, UserRole } from '../../../core/models/user.model';
+import { DEFAULT_AVG_RATING } from '../../../core/constants';
+import { ADMIN_STAT_DISPLAY, REPORT_ACTIVITY_DISPLAY, USER_GROWTH_COLORS } from '../../../core/constants/display.constants';
 
 @Component({
   selector: 'mc-admin-reports-page',
@@ -148,13 +148,57 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminReportsPageComponent {
-  private readonly store = inject(Store<AppState>);
+  private readonly adminData = inject(AdminFacade);
+  private readonly userSvc = inject(UsersFacade);
+  private readonly reportsSvc = inject(ReportsFacade);
+  private readonly platformSvc = inject(PlatformFacade);
   private readonly toast = inject(ToastService);
-  readonly metrics$ = this.store.select(selectReportMetricsComputed);
-  readonly revenueChart$ = this.store.select(selectReportRevenueChart);
-  readonly userGrowthChart$ = this.store.select(selectReportUserGrowthChartComputed);
-  readonly topMentors$ = this.store.select(selectReportTopMentors);
-  readonly recentActivity$ = this.store.select(selectReportRecentActivity);
+
+  readonly metrics$ = combineLatest([this.userSvc.users$, this.adminData.data$, this.reportsSvc.menteeReviews$]).pipe(
+    map(([users, data, reviews]) => {
+      const total = users.length;
+      const mentors = users.filter((u) => u.role === UserRole.Mentor && u.mentorApprovalStatus !== MentorApprovalStatus.Rejected).length;
+      const revenue = data.payments.reduce((sum, p) => sum + p.amount, 0);
+      const avgRating = reviews.length
+        ? (reviews.reduce((a, r) => a + r.rating, 0) / reviews.length).toFixed(1)
+        : (this.platformSvc.config?.avgSessionRating ?? DEFAULT_AVG_RATING);
+      return [
+        { label: 'Total Users', value: String(total), trend: 0 },
+        { label: 'Active Mentorships', value: String(mentors), trend: 0 },
+        { label: 'Monthly Revenue', value: `$${revenue.toLocaleString()}`, trend: 0 },
+        { label: 'Avg. Session Rating', value: avgRating, trend: 0 },
+      ];
+    }),
+  );
+
+  readonly revenueChart$ = this.adminData.data$.pipe(
+    map((d) => {
+      const data = d.reports.revenueData;
+      const maxRevenue = data.length ? Math.max(...data.map((x) => x.value)) : 0;
+      return { data, maxRevenue };
+    }),
+  );
+
+  readonly userGrowthChart$ = this.userSvc.users$.pipe(
+    map((users) => {
+      const bars = [
+        { label: 'Mentees', count: users.filter((u) => u.role === UserRole.Mentee).length },
+        { label: 'Mentors', count: users.filter((u) => u.role === UserRole.Mentor).length },
+        { label: 'Admins', count: users.filter((u) => u.role === UserRole.Admin).length },
+      ].map((b) => ({ ...b, color: USER_GROWTH_COLORS[b.label] ?? 'bg-gray-500' }));
+      const maxUsers = bars.length ? Math.max(...bars.map((b) => b.count)) : 0;
+      return { data: bars, maxUsers };
+    }),
+  );
+
+  readonly topMentors$ = this.adminData.data$.pipe(map((d) => d.reports.topMentors));
+
+  readonly recentActivity$ = this.adminData.data$.pipe(
+    map((d) => d.reports.recentActivity.map((a) => {
+      const display = REPORT_ACTIVITY_DISPLAY[a.id];
+      return { ...a, icon: display?.icon ?? ['fas', 'circle'], iconBg: display?.iconBg ?? 'bg-gray-100' };
+    })),
+  );
 
   onExportReport(): void {
     this.toast.info('Report export coming soon.');

@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { AuthApiService } from '../../../core/services/auth-api.service';
-import { ToastService } from '../../../shared/services/toast.service';
+import { take } from 'rxjs/operators';
+import { UsersFacade } from '../../../core/facades/users.facade';
 import { ConfirmDialogService } from '../../../shared/services/confirm-dialog.service';
 import type { User } from '../../../core/models/user.model';
 
@@ -163,8 +163,7 @@ import type { User } from '../../../core/models/user.model';
   `,
 })
 export class AdminMentorApplicationsPageComponent implements OnInit {
-  private readonly authApi = inject(AuthApiService);
-  private readonly toast = inject(ToastService);
+  private readonly usersFacade = inject(UsersFacade);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly cdr = inject(ChangeDetectorRef);
 
@@ -180,8 +179,8 @@ export class AdminMentorApplicationsPageComponent implements OnInit {
   load(): void {
     this.loading = true;
     this.cdr.markForCheck();
-    this.authApi.getPendingMentors().subscribe({
-      next: (list) => {
+    this.usersFacade.pendingMentors$.pipe(take(1)).subscribe({
+      next: (list: User[]) => {
         this.pendingMentors = list;
         this.loading = false;
         this.cdr.markForCheck();
@@ -210,19 +209,12 @@ export class AdminMentorApplicationsPageComponent implements OnInit {
   approve(user: User): void {
     this.actionInProgress = user.id;
     this.cdr.markForCheck();
-    this.authApi.approveMentor(user.id).subscribe({
-      next: () => {
-        this.actionInProgress = null;
-        this.pendingMentors = this.pendingMentors.filter((u) => u.id !== user.id);
-        this.toast.success(`${user.name} has been approved as a mentor.`);
-        this.cdr.markForCheck();
-      },
-      error: () => {
-        this.actionInProgress = null;
-        this.toast.error('Failed to approve. Please try again.');
-        this.cdr.markForCheck();
-      },
-    });
+    this.usersFacade.approveMentorRequest(user.id);
+    setTimeout(() => {
+      this.actionInProgress = null;
+      this.pendingMentors = this.pendingMentors.filter((u) => u.id !== user.id);
+      this.cdr.markForCheck();
+    }, 400);
   }
 
   async reject(user: User): Promise<void> {
@@ -236,18 +228,11 @@ export class AdminMentorApplicationsPageComponent implements OnInit {
     if (!confirmed) return;
     this.actionInProgress = user.id;
     this.cdr.markForCheck();
-    this.authApi.rejectMentor(user.id).subscribe({
-      next: () => {
-        this.actionInProgress = null;
-        this.pendingMentors = this.pendingMentors.filter((u) => u.id !== user.id);
-        this.toast.success(`${user.name}'s application has been rejected.`);
-        this.cdr.markForCheck();
-      },
-      error: () => {
-        this.actionInProgress = null;
-        this.toast.error('Failed to reject. Please try again.');
-        this.cdr.markForCheck();
-      },
-    });
+    this.usersFacade.rejectMentorRequest(user.id);
+    setTimeout(() => {
+      this.actionInProgress = null;
+      this.pendingMentors = this.pendingMentors.filter((u) => u.id !== user.id);
+      this.cdr.markForCheck();
+    }, 400);
   }
 }

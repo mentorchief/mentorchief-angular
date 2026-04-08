@@ -2,14 +2,12 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, 
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
-import { Store } from '@ngrx/store';
-import { Subject, takeUntil, take } from 'rxjs';
+import { Subject, takeUntil } from 'rxjs';
+import { map } from 'rxjs';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { PaginationComponent } from '../../../shared/components/pagination.component';
 import { ToastService } from '../../../shared/services/toast.service';
-import type { AppState } from '../../../store/app.state';
-import { selectMentorEarningsForDisplay, selectMentorActiveMentees, selectMentorPayoutAccount } from '../store/dashboard.selectors';
-import { updateMentorPayoutAccount } from '../store/dashboard.actions';
+import { MentorFacade } from '../../../core/facades/mentor.facade';
 
 type EarningRow = { id: string; date: string; mentee: string; amount: number; status: 'paid' | 'in_escrow' | 'pending'; period: string };
 
@@ -75,7 +73,7 @@ const PAGE_SIZE = 10;
           <div class="flex-1">
             <h3 class="text-amber-900 font-medium">Pending Payout</h3>
             <p class="text-amber-700 text-sm mt-1">
-              \${{ inEscrow }} will be released to your account when current mentorship periods complete.
+              \${{ inEscrow }} will be released after you submit end-of-mentorship reports and admin approves them.
             </p>
           </div>
         </div>
@@ -233,7 +231,7 @@ const PAGE_SIZE = 10;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MentorEarningsPageComponent implements OnInit, OnDestroy {
-  private readonly store = inject(Store<AppState>);
+  private readonly mentorData = inject(MentorFacade);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
@@ -246,7 +244,7 @@ export class MentorEarningsPageComponent implements OnInit, OnDestroy {
   searchQuery = '';
   filterStatus = '';
   payoutDialogOpen = false;
-  readonly payoutAccount$ = this.store.select(selectMentorPayoutAccount);
+  readonly payoutAccount$ = this.mentorData.data$.pipe(map((d) => d.payoutAccount));
   payoutForm: FormGroup = this.fb.group({
     type: ['bank' as const, Validators.required],
     bankName: ['', Validators.required],
@@ -255,20 +253,18 @@ export class MentorEarningsPageComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
-    this.store
-      .select(selectMentorEarningsForDisplay)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((list) => {
-        this.earningsList = list;
-        this.cdr.markForCheck();
-      });
-    this.store
-      .select(selectMentorActiveMentees)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((mentees) => {
-        this.activeMenteesCount = mentees.length;
-        this.cdr.markForCheck();
-      });
+    this.mentorData.data$.pipe(takeUntil(this.destroy$)).subscribe((d) => {
+      this.earningsList = d.earnings.map((e, i) => ({
+        id: String(i + 1),
+        date: e.month,
+        mentee: e.mentees === 1 ? '1 mentee' : `${e.mentees} mentees`,
+        amount: e.amount,
+        status: (e.status === 'Released' ? 'paid' : e.status === 'In Escrow' ? 'in_escrow' : 'pending') as 'paid' | 'in_escrow' | 'pending',
+        period: e.month,
+      }));
+      this.activeMenteesCount = d.activeMentees.length;
+      this.cdr.markForCheck();
+    });
   }
 
   ngOnDestroy(): void {
@@ -338,17 +334,16 @@ export class MentorEarningsPageComponent implements OnInit, OnDestroy {
   }
 
   openPayoutDialog(): void {
-    this.payoutAccount$.pipe(take(1)).subscribe((payoutAccount) => {
-      this.payoutForm.patchValue({
-        type: payoutAccount.type,
-        bankName: payoutAccount.bankName ?? '',
-        accountNumber: payoutAccount.accountNumber ?? '',
-        instapayNumber: payoutAccount.instapayNumber ?? '',
-      });
-      this.updatePayoutValidators();
-      this.payoutDialogOpen = true;
-      this.cdr.markForCheck();
+    const payoutAccount = this.mentorData.data.payoutAccount;
+    this.payoutForm.patchValue({
+      type: payoutAccount.type,
+      bankName: payoutAccount.bankName ?? '',
+      accountNumber: payoutAccount.accountNumber ?? '',
+      instapayNumber: payoutAccount.instapayNumber ?? '',
     });
+    this.updatePayoutValidators();
+    this.payoutDialogOpen = true;
+    this.cdr.markForCheck();
   }
 
   onPayoutTypeChange(): void {
@@ -386,7 +381,7 @@ export class MentorEarningsPageComponent implements OnInit, OnDestroy {
     const payoutAccount = v.type === 'bank'
       ? { type: 'bank' as const, bankName: v.bankName, accountNumber: v.accountNumber }
       : { type: 'instapay' as const, instapayNumber: v.instapayNumber };
-    this.store.dispatch(updateMentorPayoutAccount({ payoutAccount }));
+    this.mentorData.setPayoutAccount(payoutAccount);
     this.closePayoutDialog();
     this.toast.success('Payout account updated successfully.');
     this.cdr.markForCheck();
